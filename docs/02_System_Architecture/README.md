@@ -1,128 +1,177 @@
-# 02 — System Architecture
+# E-Bog'cha System Architecture
 
-## Overview
+Version: 1.0
 
-E-Bogcha follows a layered monolith architecture with clear separation of concerns, designed for horizontal scaling when needed.
+Status: Approved
 
-```
-┌─────────────────────────────────────────────────────┐
-│                    CLIENT LAYER                      │
-│         Web Browser / Mobile Browser                 │
-└──────────────────────┬──────────────────────────────┘
-                       │ HTTPS
-┌──────────────────────▼──────────────────────────────┐
-│                  NGINX REVERSE PROXY                 │
-│            SSL Termination / Rate Limiting           │
-└──────────┬───────────────────────────┬──────────────┘
-           │ /api/*                    │ /*
-┌──────────▼──────────┐    ┌──────────▼──────────────┐
-│    BACKEND API      │    │    FRONTEND SPA          │
-│   Spring Boot 3     │    │    React 18 + Vite       │
-│   Port: 8080        │    │    Port: 3000            │
-└──────────┬──────────┘    └─────────────────────────┘
-           │
-┌──────────▼──────────────────────────────────────────┐
-│                 APPLICATION LAYER                    │
-│  ┌──────────┐  ┌──────────┐  ┌───────────────────┐  │
-│  │ Auth     │  │ Business │  │ Notification      │  │
-│  │ Module   │  │ Modules  │  │ Service           │  │
-│  └────┬─────┘  └────┬─────┘  └────────┬──────────┘  │
-└───────┼──────────────┼────────────────┼──────────────┘
-        │              │                │
-┌───────▼──────────────▼────────────────▼──────────────┐
-│                   DATA LAYER                         │
-│  ┌──────────┐  ┌──────────┐  ┌───────────────────┐  │
-│  │PostgreSQL│  │  Redis   │  │ Elasticsearch     │  │
-│  │ Primary  │  │  Cache   │  │  Search           │  │
-│  └──────────┘  └──────────┘  └───────────────────┘  │
-└──────────────────────────────────────────────────────┘
-```
+---
 
-## Core Modules
+# 1. Purpose
 
-### Authentication & Authorization
+This document defines the architecture of the E-Bog'cha platform.
 
-- JWT-based stateless authentication
-- Role-based access control (RBAC)
-- Token refresh mechanism
-- Session management via Redis
+The purpose of this architecture is to ensure scalability, maintainability, security, and long-term evolution of the system.
 
-### CRM Module
+The architecture serves as the technical foundation for all future modules.
 
-- Lead management pipeline
-- Contact and company profiles
-- Activity tracking and notes
-- Email integration
+---
 
-### Admissions Module
+# 2. Product Overview
 
-- Application intake forms
-- Document upload and verification
-- Approval workflow engine
-- Status tracking and notifications
+E-Bog'cha is a private kindergarten management platform developed exclusively for Oxu Kids.
 
-### Notification Module
+The platform digitalizes every operational process of the kindergarten.
 
-- Email delivery (SMTP)
-- SMS integration
-- In-app notifications
-- Scheduled reminders
+The first release includes:
 
-## Data Flow
+• CRM
+• Admissions
+• ERP Core
 
-```
-User Request
-    │
-    ▼
-Nginx (SSL, Rate Limit, Static)
-    │
-    ├──► Frontend (Static Files)
-    │
-    └──► Backend API
-            │
-            ├──► Authentication Filter
-            │       └──► JWT Validation
-            │
-            ├──► Controller Layer
-            │
-            ├──► Service Layer (Business Logic)
-            │
-            ├──► Repository Layer (Data Access)
-            │
-            └──► PostgreSQL / Redis
-```
+Future releases include:
 
-## Security Layers
+• Parent App
+• Finance
+• Kitchen
+• Medical
+• Warehouse
+• HR
+• Analytics
 
-| Layer | Responsibility |
-|-------|----------------|
-| Nginx | SSL termination, rate limiting, DDoS protection |
-| API Gateway | Request routing, CORS, request validation |
-| Auth Filter | JWT validation, session checks |
-| RBAC | Role and permission enforcement |
-| Service | Input validation, business rules |
-| Repository | SQL injection prevention (parameterized queries) |
+---
 
-## Scalability Considerations
+# 3. Architecture Philosophy
 
-- **Horizontal:** Stateless backend allows multiple instances behind load balancer
-- **Vertical:** PostgreSQL connection pooling via HikariCP
-- **Cache:** Redis for session store, frequently accessed data, rate limiting
-- **Search:** Elasticsearch offloads complex queries from PostgreSQL
-- **Async:** Message queue for email/SMS delivery, background jobs
+The system follows the following principles.
 
-## Environment Architecture
+## Simplicity
 
-| Environment | Purpose | Infrastructure |
-|-------------|---------|----------------|
-| Development | Local development | Docker Compose |
-| Staging | Pre-production testing | Docker + Cloud VM |
-| Production | Live system | Docker Swarm / Kubernetes |
+Keep business logic simple.
 
-## Directory Reference
+Avoid unnecessary complexity.
 
-- `infrastructure/docker/` — Dockerfiles and compose files
-- `infrastructure/nginx/` — Nginx configuration
-- `backend/` — Spring Boot application source
-- `frontend/` — React application source
-- `database/` — Migrations and seed data
+---
+
+## Scalability
+
+Every module must be expandable without rewriting existing code.
+
+---
+
+## Dynamic Configuration
+
+Business users should configure the platform through the Admin Panel whenever possible.
+
+Adding new statuses, permissions, tariffs, discounts, pipelines, templates or notification rules must not require code changes.
+
+---
+
+## Security First
+
+Every action is authenticated.
+
+Every request is authorized.
+
+Every modification is audited.
+
+---
+
+## API First
+
+Frontend never communicates directly with the database.
+
+All communication happens through REST APIs.
+
+Future mobile applications will reuse the same APIs.
+
+---
+
+## Modular Design
+
+Every business domain is isolated into independent modules.
+
+Modules communicate through well-defined service boundaries.
+
+---
+
+## Clean Code
+
+Readable code is preferred over clever code.
+
+Consistency is mandatory.
+
+---
+
+# 4. Product Modules
+
+Core Platform
+
+CRM
+
+Admissions
+
+ERP
+
+Parent Portal
+
+Reporting
+
+Notification Center
+
+Telephony
+
+File Management
+
+Audit System
+
+Settings
+
+---
+
+# 5. Core Principles
+
+Single Source of Truth
+
+Every piece of business data has exactly one owner.
+
+Example:
+
+Student data belongs only to Student module.
+
+CRM never duplicates Student records.
+
+---
+
+Don't Repeat Yourself
+
+Business logic should never exist twice.
+
+---
+
+Configuration over Code
+
+Everything configurable should be configurable by administrators.
+
+---
+
+Audit Everything
+
+Every important action must create an audit record.
+
+---
+
+Permission Everything
+
+Every feature requires explicit permission.
+
+No hidden permissions.
+
+---
+
+Future Ready
+
+The architecture must support future modules without major redesign.
+
+---
+
+End of Part 1.
