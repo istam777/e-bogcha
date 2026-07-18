@@ -1,6 +1,6 @@
 # E-Bogcha
 
-Enterprise management system for educational institutions (kindergartens, schools, and learning centers). Centralizes student enrollment, CRM, communication, and administrative operations into a single platform.
+Enterprise management system for educational institutions. Centralizes student enrollment, CRM, communication, and administrative operations into a single platform.
 
 ## Technology Stack
 
@@ -35,14 +35,10 @@ e-bogcha/
 │   └── 09_Deployment
 ├── branding/                 # Logos, colors, design assets
 ├── infrastructure/           # DevOps configuration
-│   ├── docker/
-│   ├── nginx/
-│   └── scripts/
 ├── scripts/                  # Utility and automation scripts
 ├── .github/
 │   └── workflows/            # CI/CD pipelines
-├── .env.example
-├── docker-compose.yml
+├── .gitignore
 ├── LICENSE
 └── README.md
 ```
@@ -55,18 +51,9 @@ e-bogcha/
 4. Access the application at `http://localhost:3000`
 
 ```bash
-# Clone
 git clone https://github.com/istam777/e-bogcha.git
 cd e-bogcha
-
-# Setup
-cp .env.example .env
 docker-compose up -d
-
-# Development
-# Backend: http://localhost:8080
-# Frontend: http://localhost:3000
-# Database: localhost:5432
 ```
 
 ## Branch Strategy
@@ -78,11 +65,3 @@ docker-compose up -d
 | `feature/*`| New features                   | `develop`   |
 | `bugfix/*` | Bug fixes                      | `develop`   |
 | `hotfix/*` | Critical production fixes      | `main`      |
-| `release/*`| Release preparation            | `main`      |
-
-**Rules:**
-- All changes go through Pull Requests
-- Minimum 1 approval required
-- CI must pass before merge
-- `main` is always deployable
-- Squash merge into `develop`, merge commit into `main`
