@@ -34,11 +34,17 @@ e-bogcha/
 │   ├── 08_Development
 │   └── 09_Deployment
 ├── branding/                 # Logos, colors, design assets
-├── infrastructure/           # DevOps configuration
+├── infrastructure/
+│   ├── docker/
+│   ├── nginx/
+│   └── scripts/
 ├── scripts/                  # Utility and automation scripts
 ├── .github/
 │   └── workflows/            # CI/CD pipelines
 ├── .gitignore
+├── .editorconfig
+├── .gitattributes
+├── .env.example
 ├── LICENSE
 └── README.md
 ```
@@ -53,6 +59,7 @@ e-bogcha/
 ```bash
 git clone https://github.com/istam777/e-bogcha.git
 cd e-bogcha
+cp .env.example .env
 docker-compose up -d
 ```
 
