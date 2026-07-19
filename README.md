@@ -1,29 +1,49 @@
-# E-Bogcha
+# E-Bog'cha
 
-Enterprise management system for educational institutions. Centralizes student enrollment, CRM, communication, and administrative operations into a single platform.
+Internal kindergarten management platform for Oxu Kids. The system will manage the complete operational flow from CRM lead acquisition through admissions, payment, student enrollment, and later ERP processes.
 
-## Technology Stack
+> Project status: architecture and repository foundation. Application bootstrap has not yet been implemented.
 
-| Layer         | Technology                          |
-|---------------|-------------------------------------|
-| Frontend      | React 18+, TypeScript, Tailwind CSS |
-| Backend       | Spring Boot 3, Java 21              |
-| Database      | PostgreSQL 16                       |
-| Cache         | Redis 7                             |
-| Search        | Elasticsearch 8                     |
-| Auth          | Spring Security + JWT               |
-| Build         | Maven, Vite, Docker                 |
-| CI/CD         | GitHub Actions                      |
-| Infra         | Docker Compose, Nginx               |
+## Approved architecture
 
-## Project Structure
+| Layer | Technology |
+|---|---|
+| Frontend | React, TypeScript, Vite |
+| Backend | Java 21, Spring Boot 3.x |
+| Database | PostgreSQL 17 |
+| Cache | Redis |
+| Authentication | Spring Security and JWT |
+| Database migrations | Flyway |
+| File storage | MinIO or S3-compatible storage |
+| Real-time communication | WebSocket where required |
+| Infrastructure | Docker Compose and Nginx |
+| CI/CD | GitHub Actions |
 
+The backend follows a modular-monolith architecture. Search infrastructure such as Elasticsearch will be introduced only when a documented requirement and measured need justify it.
+
+## Version 1 scope
+
+- Core Platform
+- CRM
+- Admissions
+- ERP foundation
+- Telephony integration foundation
+- Dynamic RBAC, settings, audit, notifications, and file management foundations
+
+Primary business flow:
+
+```text
+Lead -> Tour -> Contract -> Payment -> Student enrollment
 ```
+
+## Repository structure
+
+```text
 e-bogcha/
-├── backend/                  # Spring Boot REST API
-├── frontend/                 # React SPA
-├── database/                 # Migrations, seeds, SQL scripts
-├── docs/                     # Project documentation
+├── backend/                  # Spring Boot application
+├── frontend/                 # React application
+├── database/                 # Database assets and supporting scripts
+├── docs/
 │   ├── 01_Project_Foundation
 │   ├── 02_System_Architecture
 │   ├── 03_Database
@@ -33,42 +53,35 @@ e-bogcha/
 │   ├── 07_UI_UX
 │   ├── 08_Development
 │   └── 09_Deployment
-├── branding/                 # Logos, colors, design assets
+├── branding/                 # Logos and design assets
 ├── infrastructure/
 │   ├── docker/
 │   ├── nginx/
 │   └── scripts/
-├── scripts/                  # Utility and automation scripts
-├── .github/
-│   └── workflows/            # CI/CD pipelines
-├── .gitignore
-├── .editorconfig
-├── .gitattributes
-├── .env.example
-├── LICENSE
-└── README.md
+├── scripts/
+└── .github/
 ```
 
-## Development Workflow
+## Branch strategy
 
-1. Clone the repository
-2. Copy `.env.example` to `.env` and configure
-3. Run `docker-compose up -d` to start services
-4. Access the application at `http://localhost:3000`
+| Branch | Purpose | Target |
+|---|---|---|
+| `main` | Production-ready code | — |
+| `develop` | Integration branch | `main` |
+| `feature/*` | New features | `develop` |
+| `bugfix/*` | Non-production fixes | `develop` |
+| `hotfix/*` | Urgent production fixes | `main` |
 
-```bash
-git clone https://github.com/istam777/e-bogcha.git
-cd e-bogcha
-cp .env.example .env
-docker-compose up -d
-```
+Implementation work must be performed through scoped branches and pull requests. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## Branch Strategy
+## Documentation
 
-| Branch     | Purpose                        | Merges Into |
-|------------|--------------------------------|-------------|
-| `main`     | Production-ready code          | —           |
-| `develop`  | Integration branch             | `main`      |
-| `feature/*`| New features                   | `develop`   |
-| `bugfix/*` | Bug fixes                      | `develop`   |
-| `hotfix/*` | Critical production fixes      | `main`      |
+- [Project Foundation](docs/01_Project_Foundation/README.md)
+- [System Architecture](docs/02_System_Architecture/README.md)
+- [Database Architecture](docs/03_Database/README.md)
+- [Development Standards](docs/08_Development/README.md)
+- [Security Policy](SECURITY.md)
+
+## Local development
+
+Local start commands will be added during the Core Platform Bootstrap task together with the Maven wrapper, frontend package configuration, Docker Compose stack, health checks, and verified setup instructions. Commands are intentionally not documented before they exist and are tested.
