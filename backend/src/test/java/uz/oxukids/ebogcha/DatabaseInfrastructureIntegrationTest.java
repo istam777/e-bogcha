@@ -53,7 +53,7 @@ class DatabaseInfrastructureIntegrationTest {
     private ApplicationContext applicationContext;
 
     @Test
-    void appliesOnlyTheApprovedSchemasThroughV7() {
+    void appliesOnlyTheApprovedSchemasThroughV8() {
         Integer connectivityCheck = jdbcTemplate.queryForObject("SELECT 1", Integer.class);
         assertThat(connectivityCheck).isEqualTo(1);
 
@@ -64,7 +64,7 @@ class DatabaseInfrastructureIntegrationTest {
         assertThat(flyway.info().pending()).isEmpty();
         assertThat(flyway.info().applied())
                 .extracting(migration -> migration.getVersion().getVersion())
-                .containsExactly("1", "2", "3", "4", "5", "6", "7");
+                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8");
 
         List<String> foundationTables = jdbcTemplate.queryForList(
                 """
@@ -88,15 +88,18 @@ class DatabaseInfrastructureIntegrationTest {
                 "gender_types",
                 "languages",
                 "lead_activity_types",
+                "lead_phones",
                 "lead_sources",
                 "lead_statuses",
                 "lead_task_statuses",
+                "leads",
                 "lost_reasons",
                 "nationalities",
                 "number_sequences",
                 "organizations",
                 "permissions",
                 "positions",
+                "prospective_children",
                 "refresh_tokens",
                 "relationship_types",
                 "role_permissions",
@@ -128,15 +131,30 @@ class DatabaseInfrastructureIntegrationTest {
                 "lost_reasons",
                 "tour_outcomes");
 
+        List<String> crmLeadCoreTables = jdbcTemplate.queryForList(
+                """
+                SELECT table_name
+                  FROM information_schema.tables
+                 WHERE table_schema = 'public'
+                   AND table_name IN ('leads', 'lead_phones', 'prospective_children')
+                 ORDER BY table_name
+                """,
+                String.class);
+        assertThat(crmLeadCoreTables)
+                .containsExactly("lead_phones", "leads", "prospective_children");
+
         Integer prohibitedTableCount = jdbcTemplate.queryForObject(
                 """
                 SELECT count(*)
                   FROM information_schema.tables
                  WHERE table_schema = 'public'
                    AND table_name IN (
-                       'leads', 'lead_phones', 'prospective_children', 'lead_assignments',
-                       'tours', 'pbx_configs', 'call_sessions', 'lead_conversions',
-                       'children', 'admission_applications')
+                       'lead_assignments', 'lead_status_history', 'lead_activities',
+                       'lead_notes', 'lead_tasks', 'tours', 'lead_duplicates',
+                       'pbx_configs', 'extensions', 'sip_accounts', 'phone_numbers',
+                       'call_sessions', 'call_participants', 'call_events',
+                       'call_recordings', 'lead_calls', 'webhook_events',
+                       'lead_conversions', 'children', 'admission_applications')
                 """,
                 Integer.class);
         assertThat(prohibitedTableCount).isZero();
@@ -167,6 +185,9 @@ class DatabaseInfrastructureIntegrationTest {
                      + (SELECT count(*) FROM tour_outcomes)
                      + (SELECT count(*) FROM lead_task_statuses)
                      + (SELECT count(*) FROM lead_activity_types)
+                     + (SELECT count(*) FROM leads)
+                     + (SELECT count(*) FROM lead_phones)
+                     + (SELECT count(*) FROM prospective_children)
                 """,
                 Integer.class);
         assertThat(unseededReferenceRowCount).isZero();
@@ -225,7 +246,8 @@ class DatabaseInfrastructureIntegrationTest {
                        'document_verification_statuses', 'stored_files',
                        'application_settings', 'number_sequences', 'lead_sources',
                        'lead_statuses', 'lost_reasons', 'tour_outcomes',
-                       'lead_task_statuses', 'lead_activity_types')
+                       'lead_task_statuses', 'lead_activity_types', 'leads',
+                       'lead_phones', 'prospective_children')
                 """,
                 (resultSet, rowNumber) -> new ForeignKeyMetadata(
                         resultSet.getString("source_table"),
@@ -280,7 +302,8 @@ class DatabaseInfrastructureIntegrationTest {
                        'document_verification_statuses', 'stored_files',
                        'application_settings', 'number_sequences', 'lead_sources',
                        'lead_statuses', 'lost_reasons', 'tour_outcomes',
-                       'lead_task_statuses', 'lead_activity_types')
+                       'lead_task_statuses', 'lead_activity_types', 'leads',
+                       'lead_phones', 'prospective_children')
                 """,
                 (resultSet, rowNumber) -> new ForeignKeyIndexCoverage(
                         resultSet.getString("source_table"),
@@ -401,7 +424,8 @@ class DatabaseInfrastructureIntegrationTest {
                        'document_verification_statuses', 'stored_files',
                        'application_settings', 'number_sequences', 'lead_sources',
                        'lead_statuses', 'lost_reasons', 'tour_outcomes',
-                       'lead_task_statuses', 'lead_activity_types')
+                       'lead_task_statuses', 'lead_activity_types', 'leads',
+                       'lead_phones', 'prospective_children')
                 """,
                 (resultSet, rowNumber) -> new ConstraintCounts(
                         resultSet.getInt("primary_keys"),
@@ -409,7 +433,7 @@ class DatabaseInfrastructureIntegrationTest {
                         resultSet.getInt("foreign_keys"),
                         resultSet.getInt("check_constraints")));
 
-        assertThat(constraintCounts).isEqualTo(new ConstraintCounts(30, 27, 41, 0));
+        assertThat(constraintCounts).isEqualTo(new ConstraintCounts(33, 27, 52, 0));
     }
 
     @Test
@@ -659,7 +683,7 @@ class DatabaseInfrastructureIntegrationTest {
     }
 
     @Test
-    void hasNoDatabaseGeneratedCrmReferenceUuidsOrUuidExtensions() {
+    void hasNoDatabaseGeneratedCrmUuidsOrUuidExtensions() {
         List<ColumnDefaultMetadata> idColumns = jdbcTemplate.query(
                 """
                 SELECT table_name, column_default
@@ -668,7 +692,8 @@ class DatabaseInfrastructureIntegrationTest {
                    AND column_name = 'id'
                    AND table_name IN (
                        'lead_sources', 'lead_statuses', 'lost_reasons',
-                       'tour_outcomes', 'lead_task_statuses', 'lead_activity_types')
+                       'tour_outcomes', 'lead_task_statuses', 'lead_activity_types',
+                       'leads', 'lead_phones', 'prospective_children')
                  ORDER BY table_name
                 """,
                 (resultSet, rowNumber) -> new ColumnDefaultMetadata(
@@ -676,16 +701,357 @@ class DatabaseInfrastructureIntegrationTest {
                         resultSet.getString("column_default")));
         assertThat(idColumns).containsExactly(
                 new ColumnDefaultMetadata("lead_activity_types", null),
+                new ColumnDefaultMetadata("lead_phones", null),
                 new ColumnDefaultMetadata("lead_sources", null),
                 new ColumnDefaultMetadata("lead_statuses", null),
                 new ColumnDefaultMetadata("lead_task_statuses", null),
+                new ColumnDefaultMetadata("leads", null),
                 new ColumnDefaultMetadata("lost_reasons", null),
+                new ColumnDefaultMetadata("prospective_children", null),
                 new ColumnDefaultMetadata("tour_outcomes", null));
 
         List<String> uuidExtensions = jdbcTemplate.queryForList(
                 "SELECT extname FROM pg_extension WHERE extname IN ('pgcrypto', 'uuid-ossp')",
                 String.class);
         assertThat(uuidExtensions).isEmpty();
+    }
+
+    @Test
+    void definesExactCrmLeadCoreColumnMetadata() {
+        List<ColumnMetadata> actualColumns = jdbcTemplate.query(
+                """
+                SELECT table_name,
+                       column_name,
+                       data_type,
+                       character_maximum_length,
+                       is_nullable,
+                       column_default
+                  FROM information_schema.columns
+                 WHERE table_schema = 'public'
+                   AND table_name IN ('leads', 'lead_phones', 'prospective_children')
+                """,
+                (resultSet, rowNumber) -> new ColumnMetadata(
+                        resultSet.getString("table_name"),
+                        resultSet.getString("column_name"),
+                        resultSet.getString("data_type"),
+                        resultSet.getObject("character_maximum_length", Integer.class),
+                        "YES".equals(resultSet.getString("is_nullable")),
+                        resultSet.getString("column_default")));
+
+        assertThat(actualColumns).containsExactlyInAnyOrderElementsOf(expectedCrmLeadCoreColumns());
+    }
+
+    @Test
+    void definesExactCrmLeadCoreKeysAndConstraintCounts() {
+        List<KeyMetadata> actualKeys = jdbcTemplate.query(
+                """
+                SELECT table_relation.relname AS table_name,
+                       CASE constraint_definition.contype
+                           WHEN 'p' THEN 'PRIMARY KEY'
+                           WHEN 'u' THEN 'UNIQUE'
+                       END AS key_type,
+                       string_agg(attribute.attname, ',' ORDER BY key_position.ordinality)
+                           AS key_columns,
+                       index_definition.indnullsnotdistinct,
+                       access_method.amname AS access_method
+                  FROM pg_constraint constraint_definition
+                  JOIN pg_class table_relation
+                    ON table_relation.oid = constraint_definition.conrelid
+                  JOIN pg_namespace table_schema
+                    ON table_schema.oid = table_relation.relnamespace
+                  JOIN pg_index index_definition
+                    ON index_definition.indexrelid = constraint_definition.conindid
+                  JOIN pg_class index_relation
+                    ON index_relation.oid = index_definition.indexrelid
+                  JOIN pg_am access_method
+                    ON access_method.oid = index_relation.relam
+                  JOIN LATERAL unnest(constraint_definition.conkey) WITH ORDINALITY
+                       AS key_position(attribute_number, ordinality) ON TRUE
+                  JOIN pg_attribute attribute
+                    ON attribute.attrelid = table_relation.oid
+                   AND attribute.attnum = key_position.attribute_number
+                 WHERE table_schema.nspname = 'public'
+                   AND constraint_definition.contype IN ('p', 'u')
+                   AND table_relation.relname IN ('leads', 'lead_phones', 'prospective_children')
+                 GROUP BY table_relation.relname,
+                          constraint_definition.oid,
+                          constraint_definition.contype,
+                          index_definition.indnullsnotdistinct,
+                          access_method.amname
+                """,
+                (resultSet, rowNumber) -> new KeyMetadata(
+                        resultSet.getString("table_name"),
+                        resultSet.getString("key_type"),
+                        resultSet.getString("key_columns"),
+                        resultSet.getBoolean("indnullsnotdistinct"),
+                        resultSet.getString("access_method")));
+
+        assertThat(actualKeys).containsExactlyInAnyOrderElementsOf(expectedCrmLeadCoreKeys());
+
+        ConstraintCounts constraintCounts = jdbcTemplate.queryForObject(
+                """
+                SELECT count(*) FILTER (WHERE constraint_definition.contype = 'p') AS primary_keys,
+                       count(*) FILTER (WHERE constraint_definition.contype = 'u') AS unique_constraints,
+                       count(*) FILTER (WHERE constraint_definition.contype = 'f') AS foreign_keys,
+                       count(*) FILTER (WHERE constraint_definition.contype = 'c') AS check_constraints
+                  FROM pg_constraint constraint_definition
+                  JOIN pg_class table_relation
+                    ON table_relation.oid = constraint_definition.conrelid
+                  JOIN pg_namespace table_schema
+                    ON table_schema.oid = table_relation.relnamespace
+                 WHERE table_schema.nspname = 'public'
+                   AND table_relation.relname IN ('leads', 'lead_phones', 'prospective_children')
+                """,
+                (resultSet, rowNumber) -> new ConstraintCounts(
+                        resultSet.getInt("primary_keys"),
+                        resultSet.getInt("unique_constraints"),
+                        resultSet.getInt("foreign_keys"),
+                        resultSet.getInt("check_constraints")));
+        assertThat(constraintCounts).isEqualTo(new ConstraintCounts(3, 0, 11, 0));
+    }
+
+    @Test
+    void definesExactCrmLeadCoreIndexInventory() {
+        List<IndexMetadata> indexes = jdbcTemplate.query(
+                """
+                SELECT table_relation.relname AS table_name,
+                       index_relation.relname AS index_name,
+                       index_definition.indisunique,
+                       index_definition.indnullsnotdistinct,
+                       access_method.amname AS access_method,
+                       index_definition.indisvalid,
+                       index_definition.indisready,
+                       index_definition.indpred IS NOT NULL AS partial,
+                       string_agg(attribute.attname, ',' ORDER BY key_position.position)
+                           AS key_columns
+                  FROM pg_index index_definition
+                  JOIN pg_class index_relation
+                    ON index_relation.oid = index_definition.indexrelid
+                  JOIN pg_class table_relation
+                    ON table_relation.oid = index_definition.indrelid
+                  JOIN pg_namespace table_schema
+                    ON table_schema.oid = table_relation.relnamespace
+                  JOIN pg_am access_method
+                    ON access_method.oid = index_relation.relam
+                  JOIN LATERAL generate_series(0, index_definition.indnkeyatts - 1)
+                       AS key_position(position) ON TRUE
+                  JOIN pg_attribute attribute
+                    ON attribute.attrelid = table_relation.oid
+                   AND attribute.attnum = index_definition.indkey[key_position.position]
+                 WHERE table_schema.nspname = 'public'
+                   AND table_relation.relname IN ('leads', 'lead_phones', 'prospective_children')
+                   AND NOT index_definition.indisprimary
+                 GROUP BY table_relation.relname,
+                          index_relation.relname,
+                          index_definition.indisunique,
+                          index_definition.indnullsnotdistinct,
+                          access_method.amname,
+                          index_definition.indisvalid,
+                          index_definition.indisready,
+                          index_definition.indpred
+                """,
+                (resultSet, rowNumber) -> new IndexMetadata(
+                        resultSet.getString("table_name"),
+                        resultSet.getString("index_name"),
+                        resultSet.getBoolean("indisunique"),
+                        resultSet.getBoolean("indnullsnotdistinct"),
+                        resultSet.getString("access_method"),
+                        resultSet.getBoolean("indisvalid"),
+                        resultSet.getBoolean("indisready"),
+                        resultSet.getBoolean("partial"),
+                        resultSet.getString("key_columns")));
+
+        assertThat(indexes).containsExactlyInAnyOrderElementsOf(expectedCrmLeadCoreIndexes());
+    }
+
+    @Test
+    void definesPrimaryLeadPhoneIndexWithApprovedPostgresSemantics() {
+        List<PartialUniqueIndexMetadata> indexes = jdbcTemplate.query(
+                """
+                SELECT index_definition.indisunique,
+                       access_method.amname AS access_method,
+                       index_definition.indnullsnotdistinct,
+                       index_definition.indnkeyatts,
+                       pg_get_indexdef(index_definition.indexrelid, 1, TRUE) AS first_key,
+                       pg_get_indexdef(index_definition.indexrelid, 2, TRUE) AS second_key,
+                       pg_get_indexdef(index_definition.indexrelid, 3, TRUE) AS third_key,
+                       pg_get_expr(index_definition.indpred, index_definition.indrelid) AS predicate
+                  FROM pg_index index_definition
+                  JOIN pg_class index_relation
+                    ON index_relation.oid = index_definition.indexrelid
+                  JOIN pg_class table_relation
+                    ON table_relation.oid = index_definition.indrelid
+                  JOIN pg_namespace table_schema
+                    ON table_schema.oid = table_relation.relnamespace
+                  JOIN pg_am access_method
+                    ON access_method.oid = index_relation.relam
+                 WHERE table_schema.nspname = 'public'
+                   AND table_relation.relname = 'lead_phones'
+                   AND index_relation.relname = 'ux_lead_phones_primary_lead'
+                """,
+                (resultSet, rowNumber) -> new PartialUniqueIndexMetadata(
+                        resultSet.getBoolean("indisunique"),
+                        resultSet.getString("access_method"),
+                        resultSet.getBoolean("indnullsnotdistinct"),
+                        resultSet.getInt("indnkeyatts"),
+                        resultSet.getString("first_key"),
+                        resultSet.getString("second_key"),
+                        resultSet.getString("third_key"),
+                        resultSet.getString("predicate")));
+
+        assertThat(indexes).hasSize(1);
+        PartialUniqueIndexMetadata index = indexes.getFirst();
+        assertThat(index.unique()).isTrue();
+        assertThat(index.accessMethod()).isEqualTo("btree");
+        assertThat(index.nullsNotDistinct()).isFalse();
+        assertThat(index.keyCount()).isEqualTo(1);
+        assertThat(index.firstKey()).isEqualTo("lead_id");
+        assertThat(index.secondKey()).isEmpty();
+        assertThat(index.thirdKey()).isEmpty();
+        assertThat(index.predicate().replaceAll("[()\\s]", "")).isEqualTo("is_primary");
+
+        List<String> partialUniqueIndexes = jdbcTemplate.queryForList(
+                """
+                SELECT index_relation.relname
+                  FROM pg_index index_definition
+                  JOIN pg_class index_relation
+                    ON index_relation.oid = index_definition.indexrelid
+                  JOIN pg_class table_relation
+                    ON table_relation.oid = index_definition.indrelid
+                  JOIN pg_namespace table_schema
+                    ON table_schema.oid = table_relation.relnamespace
+                 WHERE table_schema.nspname = 'public'
+                   AND index_definition.indisunique
+                   AND index_definition.indpred IS NOT NULL
+                 ORDER BY index_relation.relname
+                """,
+                String.class);
+        assertThat(partialUniqueIndexes).containsExactly(
+                "ux_lead_phones_primary_lead", "ux_user_roles_current_assignment");
+    }
+
+    @Test
+    void rejectsASecondPrimaryPhoneForTheSameLead() {
+        LeadFixture fixture = createLeadFixture();
+        try {
+            insertLeadPhone(fixture.leadId(), genericPhone(), true);
+
+            assertSqlState(
+                    "23505", () -> insertLeadPhone(fixture.leadId(), genericPhone(), true));
+
+            assertThat(countLeadPhones(fixture.leadId(), true)).isEqualTo(1);
+        } finally {
+            deleteLeadFixture(fixture);
+        }
+    }
+
+    @Test
+    void permitsSupportedPrimaryAndNonPrimaryPhoneCombinations() {
+        LeadFixture fixture = createLeadFixture();
+        UUID secondLeadId = UUID.randomUUID();
+        try {
+            insertLead(
+                    secondLeadId,
+                    fixture.branchId(),
+                    fixture.sourceId(),
+                    fixture.statusId());
+
+            insertLeadPhone(fixture.leadId(), genericPhone(), false);
+            insertLeadPhone(fixture.leadId(), genericPhone(), false);
+            assertThat(countLeadPhones(fixture.leadId(), false)).isEqualTo(2);
+            assertThat(countLeadPhones(fixture.leadId(), true)).isZero();
+
+            insertLeadPhone(fixture.leadId(), genericPhone(), true);
+            insertLeadPhone(secondLeadId, genericPhone(), true);
+            assertThat(countAllLeadPhones(fixture.leadId())).isEqualTo(3);
+            assertThat(countLeadPhones(fixture.leadId(), true)).isEqualTo(1);
+            assertThat(countLeadPhones(secondLeadId, true)).isEqualTo(1);
+        } finally {
+            deleteLeadFixture(fixture);
+        }
+    }
+
+    @Test
+    void permitsTheSameNormalizedPhoneWithinAndAcrossOrganizations() {
+        LeadFixture firstFixture = createLeadFixture();
+        LeadFixture secondFixture = createLeadFixture();
+        UUID sameOrganizationLeadId = UUID.randomUUID();
+        String normalizedPhone = genericPhone();
+        try {
+            insertLead(
+                    sameOrganizationLeadId,
+                    firstFixture.branchId(),
+                    firstFixture.sourceId(),
+                    firstFixture.statusId());
+            insertLeadPhone(firstFixture.leadId(), normalizedPhone, false);
+            insertLeadPhone(sameOrganizationLeadId, normalizedPhone, false);
+            insertLeadPhone(secondFixture.leadId(), normalizedPhone, false);
+
+            Integer phoneCount = jdbcTemplate.queryForObject(
+                    "SELECT count(*) FROM lead_phones WHERE normalized_phone = ?",
+                    Integer.class,
+                    normalizedPhone);
+            assertThat(phoneCount).isEqualTo(3);
+        } finally {
+            deleteLeadFixture(firstFixture);
+            deleteLeadFixture(secondFixture);
+        }
+    }
+
+    @Test
+    void rejectsAllRequiredCrmLeadCoreForeignKeyViolations() {
+        LeadFixture fixture = createLeadFixture();
+        try {
+            assertSqlState(
+                    "23503",
+                    () -> insertLead(
+                            UUID.randomUUID(),
+                            UUID.randomUUID(),
+                            fixture.sourceId(),
+                            fixture.statusId()));
+            assertSqlState(
+                    "23503",
+                    () -> insertLead(
+                            UUID.randomUUID(),
+                            fixture.branchId(),
+                            UUID.randomUUID(),
+                            fixture.statusId()));
+            assertSqlState(
+                    "23503",
+                    () -> insertLead(
+                            UUID.randomUUID(),
+                            fixture.branchId(),
+                            fixture.sourceId(),
+                            UUID.randomUUID()));
+            assertSqlState(
+                    "23503", () -> insertLeadPhone(UUID.randomUUID(), genericPhone(), false));
+            assertSqlState("23503", () -> insertProspectiveChild(UUID.randomUUID()));
+
+            Integer leadCount = jdbcTemplate.queryForObject(
+                    "SELECT count(*) FROM leads WHERE branch_id = ?",
+                    Integer.class,
+                    fixture.branchId());
+            assertThat(leadCount).isEqualTo(1);
+        } finally {
+            deleteLeadFixture(fixture);
+        }
+    }
+
+    @Test
+    void permitsMultipleProspectiveChildrenForOneLead() {
+        LeadFixture fixture = createLeadFixture();
+        try {
+            insertProspectiveChild(fixture.leadId());
+            insertProspectiveChild(fixture.leadId());
+
+            Integer childCount = jdbcTemplate.queryForObject(
+                    "SELECT count(*) FROM prospective_children WHERE lead_id = ?",
+                    Integer.class,
+                    fixture.leadId());
+            assertThat(childCount).isEqualTo(2);
+        } finally {
+            deleteLeadFixture(fixture);
+        }
     }
 
     @Test
@@ -1260,6 +1626,113 @@ class DatabaseInfrastructureIntegrationTest {
         return branchId;
     }
 
+    private LeadFixture createLeadFixture() {
+        UUID organizationId = createOrganization();
+        UUID branchId = createBranch(organizationId);
+        UUID sourceId = UUID.randomUUID();
+        UUID statusId = UUID.randomUUID();
+        UUID leadId = UUID.randomUUID();
+
+        jdbcTemplate.update(
+                """
+                INSERT INTO lead_sources (
+                    id, organization_id, code, name, source_type)
+                VALUES (?, ?, ?, 'Integration test source', 'INTEGRATION_TEST')
+                """,
+                sourceId,
+                organizationId,
+                "SOURCE_" + sourceId);
+        jdbcTemplate.update(
+                """
+                INSERT INTO lead_statuses (
+                    id, organization_id, code, name, pipeline_order)
+                VALUES (?, ?, ?, 'Integration test status', 1)
+                """,
+                statusId,
+                organizationId,
+                "STATUS_" + statusId);
+        insertLead(leadId, branchId, sourceId, statusId);
+
+        return new LeadFixture(organizationId, branchId, sourceId, statusId, leadId);
+    }
+
+    private void insertLead(UUID leadId, UUID branchId, UUID sourceId, UUID statusId) {
+        jdbcTemplate.update(
+                """
+                INSERT INTO leads (
+                    id, branch_id, source_id, status_id, parent_or_guardian_name,
+                    first_contact_due_at, created_at, updated_at)
+                VALUES (
+                    ?, ?, ?, ?, 'Integration test guardian',
+                    CURRENT_TIMESTAMP + INTERVAL '24 hours', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """,
+                leadId,
+                branchId,
+                sourceId,
+                statusId);
+    }
+
+    private void insertLeadPhone(UUID leadId, String normalizedPhone, boolean primary) {
+        jdbcTemplate.update(
+                """
+                INSERT INTO lead_phones (
+                    id, lead_id, normalized_phone, display_phone, is_primary, created_at)
+                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """,
+                UUID.randomUUID(),
+                leadId,
+                normalizedPhone,
+                normalizedPhone,
+                primary);
+    }
+
+    private void insertProspectiveChild(UUID leadId) {
+        jdbcTemplate.update(
+                """
+                INSERT INTO prospective_children (id, lead_id, first_name, created_at, updated_at)
+                VALUES (?, ?, 'Integration test child', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """,
+                UUID.randomUUID(),
+                leadId);
+    }
+
+    private int countLeadPhones(UUID leadId, boolean primary) {
+        return jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM lead_phones WHERE lead_id = ? AND is_primary = ?",
+                Integer.class,
+                leadId,
+                primary);
+    }
+
+    private int countAllLeadPhones(UUID leadId) {
+        return jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM lead_phones WHERE lead_id = ?", Integer.class, leadId);
+    }
+
+    private String genericPhone() {
+        return "TEST_" + UUID.randomUUID().toString().replace("-", "").substring(0, 20);
+    }
+
+    private void deleteLeadFixture(LeadFixture fixture) {
+        jdbcTemplate.update(
+                """
+                DELETE FROM prospective_children
+                 WHERE lead_id IN (SELECT id FROM leads WHERE branch_id = ?)
+                """,
+                fixture.branchId());
+        jdbcTemplate.update(
+                """
+                DELETE FROM lead_phones
+                 WHERE lead_id IN (SELECT id FROM leads WHERE branch_id = ?)
+                """,
+                fixture.branchId());
+        jdbcTemplate.update("DELETE FROM leads WHERE branch_id = ?", fixture.branchId());
+        jdbcTemplate.update("DELETE FROM lead_sources WHERE id = ?", fixture.sourceId());
+        jdbcTemplate.update("DELETE FROM lead_statuses WHERE id = ?", fixture.statusId());
+        jdbcTemplate.update("DELETE FROM branches WHERE id = ?", fixture.branchId());
+        deleteOrganization(fixture.organizationId());
+    }
+
     private void insertDepartment(UUID organizationId, UUID branchId, String code) {
         jdbcTemplate.update(
                 """
@@ -1394,6 +1867,106 @@ class DatabaseInfrastructureIntegrationTest {
         Throwable mostSpecificCause = exception.getMostSpecificCause();
         assertThat(mostSpecificCause).isInstanceOf(SQLException.class);
         assertThat(((SQLException) mostSpecificCause).getSQLState()).isEqualTo(expectedSqlState);
+    }
+
+    private List<ColumnMetadata> expectedCrmLeadCoreColumns() {
+        return """
+                leads|id|uuid||false|
+                leads|branch_id|uuid||false|
+                leads|source_id|uuid||false|
+                leads|status_id|uuid||false|
+                leads|owner_user_id|uuid||true|
+                leads|parent_or_guardian_name|character varying|255|false|
+                leads|preferred_language_id|uuid||true|
+                leads|intent_summary|text||true|
+                leads|first_contact_due_at|timestamp with time zone||false|
+                leads|first_contact_at|timestamp with time zone||true|
+                leads|lost_reason_id|uuid||true|
+                leads|archived_at|timestamp with time zone||true|
+                leads|created_at|timestamp with time zone||false|
+                leads|created_by|uuid||true|
+                leads|updated_at|timestamp with time zone||false|
+                leads|updated_by|uuid||true|
+                lead_phones|id|uuid||false|
+                lead_phones|lead_id|uuid||false|
+                lead_phones|normalized_phone|character varying|32|false|
+                lead_phones|display_phone|character varying|50|false|
+                lead_phones|is_primary|boolean||false|false
+                lead_phones|created_at|timestamp with time zone||false|
+                prospective_children|id|uuid||false|
+                prospective_children|lead_id|uuid||false|
+                prospective_children|first_name|character varying|120|true|
+                prospective_children|last_name|character varying|120|true|
+                prospective_children|patronymic|character varying|120|true|
+                prospective_children|date_of_birth|date||true|
+                prospective_children|reported_age_months|integer||true|
+                prospective_children|preferred_language_id|uuid||true|
+                prospective_children|notes|text||true|
+                prospective_children|created_at|timestamp with time zone||false|
+                prospective_children|updated_at|timestamp with time zone||false|
+                """
+                .lines()
+                .map(String::strip)
+                .filter(line -> !line.isEmpty())
+                .map(line -> {
+                    String[] fields = line.split("\\|", -1);
+                    Integer length = fields[3].isEmpty() ? null : Integer.valueOf(fields[3]);
+                    String defaultValue = fields[5].isEmpty() ? null : fields[5];
+                    return new ColumnMetadata(
+                            fields[0],
+                            fields[1],
+                            fields[2],
+                            length,
+                            Boolean.parseBoolean(fields[4]),
+                            defaultValue);
+                })
+                .toList();
+    }
+
+    private List<KeyMetadata> expectedCrmLeadCoreKeys() {
+        return List.of(
+                key("leads", "PRIMARY KEY", "id", false),
+                key("lead_phones", "PRIMARY KEY", "id", false),
+                key("prospective_children", "PRIMARY KEY", "id", false));
+    }
+
+    private List<IndexMetadata> expectedCrmLeadCoreIndexes() {
+        return List.of(
+                index("leads", "idx_leads_branch_id", false, "branch_id"),
+                index("leads", "idx_leads_source_id", false, "source_id"),
+                index("leads", "idx_leads_status_id", false, "status_id"),
+                index("leads", "idx_leads_owner_user_id", false, "owner_user_id"),
+                index(
+                        "leads",
+                        "idx_leads_preferred_language_id",
+                        false,
+                        "preferred_language_id"),
+                index("leads", "idx_leads_lost_reason_id", false, "lost_reason_id"),
+                index("leads", "idx_leads_created_by", false, "created_by"),
+                index("leads", "idx_leads_updated_by", false, "updated_by"),
+                index("leads", "idx_leads_branch_status", false, "branch_id,status_id"),
+                index(
+                        "leads", "idx_leads_branch_created_at", false, "branch_id,created_at"),
+                index(
+                        "leads", "idx_leads_first_contact_due_at", false, "first_contact_due_at"),
+                index("lead_phones", "idx_lead_phones_lead_id", false, "lead_id"),
+                index(
+                        "lead_phones",
+                        "idx_lead_phones_normalized_phone",
+                        false,
+                        "normalized_phone"),
+                partialIndex(
+                        "lead_phones", "ux_lead_phones_primary_lead", true, "lead_id"),
+                index(
+                        "prospective_children",
+                        "idx_prospective_children_lead_id",
+                        false,
+                        "lead_id"),
+                index(
+                        "prospective_children",
+                        "idx_prospective_children_preferred_language_id",
+                        false,
+                        "preferred_language_id"));
     }
 
     private List<ColumnMetadata> expectedCrmReferenceColumns() {
@@ -1536,6 +2109,20 @@ class DatabaseInfrastructureIntegrationTest {
                 true,
                 true,
                 false,
+                keyColumns);
+    }
+
+    private IndexMetadata partialIndex(
+            String tableName, String indexName, boolean unique, String keyColumns) {
+        return new IndexMetadata(
+                tableName,
+                indexName,
+                unique,
+                false,
+                "btree",
+                true,
+                true,
+                true,
                 keyColumns);
     }
 
@@ -1744,7 +2331,19 @@ class DatabaseInfrastructureIntegrationTest {
                 restrictedForeignKey("lead_sources", "organization_id", "organizations"),
                 restrictedForeignKey("lead_statuses", "organization_id", "organizations"),
                 restrictedForeignKey("lost_reasons", "organization_id", "organizations"),
-                restrictedForeignKey("tour_outcomes", "organization_id", "organizations"));
+                restrictedForeignKey("tour_outcomes", "organization_id", "organizations"),
+                restrictedForeignKey("leads", "branch_id", "branches"),
+                restrictedForeignKey("leads", "source_id", "lead_sources"),
+                restrictedForeignKey("leads", "status_id", "lead_statuses"),
+                restrictedForeignKey("leads", "owner_user_id", "users"),
+                restrictedForeignKey("leads", "preferred_language_id", "languages"),
+                restrictedForeignKey("leads", "lost_reason_id", "lost_reasons"),
+                restrictedForeignKey("leads", "created_by", "users"),
+                restrictedForeignKey("leads", "updated_by", "users"),
+                restrictedForeignKey("lead_phones", "lead_id", "leads"),
+                restrictedForeignKey("prospective_children", "lead_id", "leads"),
+                restrictedForeignKey(
+                        "prospective_children", "preferred_language_id", "languages"));
     }
 
     private ForeignKeyMetadata restrictedForeignKey(
@@ -1821,4 +2420,7 @@ class DatabaseInfrastructureIntegrationTest {
     private record UserRoleFixture(UUID userId, UUID roleId, UUID branchId) {}
 
     private record AuditFixture(UUID auditLogId) {}
+
+    private record LeadFixture(
+            UUID organizationId, UUID branchId, UUID sourceId, UUID statusId, UUID leadId) {}
 }
