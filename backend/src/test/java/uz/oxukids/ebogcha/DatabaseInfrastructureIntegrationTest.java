@@ -53,14 +53,18 @@ class DatabaseInfrastructureIntegrationTest {
     private ApplicationContext applicationContext;
 
     @Test
-    void appliesOnlyTheApprovedCoreAndFoundationSchemas() {
+    void appliesOnlyTheApprovedSchemasThroughV7() {
         Integer connectivityCheck = jdbcTemplate.queryForObject("SELECT 1", Integer.class);
         assertThat(connectivityCheck).isEqualTo(1);
+
+        Integer postgresMajorVersion = jdbcTemplate.queryForObject(
+                "SELECT current_setting('server_version_num')::INTEGER / 10000", Integer.class);
+        assertThat(postgresMajorVersion).isEqualTo(17);
 
         assertThat(flyway.info().pending()).isEmpty();
         assertThat(flyway.info().applied())
                 .extracting(migration -> migration.getVersion().getVersion())
-                .containsExactly("1", "2", "3", "4", "5", "6");
+                .containsExactly("1", "2", "3", "4", "5", "6", "7");
 
         List<String> foundationTables = jdbcTemplate.queryForList(
                 """
@@ -83,6 +87,11 @@ class DatabaseInfrastructureIntegrationTest {
                 "employees",
                 "gender_types",
                 "languages",
+                "lead_activity_types",
+                "lead_sources",
+                "lead_statuses",
+                "lead_task_statuses",
+                "lost_reasons",
                 "nationalities",
                 "number_sequences",
                 "organizations",
@@ -93,11 +102,44 @@ class DatabaseInfrastructureIntegrationTest {
                 "role_permissions",
                 "roles",
                 "stored_files",
+                "tour_outcomes",
                 "user_branch_access",
                 "user_credentials",
                 "user_roles",
                 "user_statuses",
                 "users");
+
+        List<String> crmReferenceTables = jdbcTemplate.queryForList(
+                """
+                SELECT table_name
+                  FROM information_schema.tables
+                 WHERE table_schema = 'public'
+                   AND table_name IN (
+                       'lead_sources', 'lead_statuses', 'lost_reasons',
+                       'tour_outcomes', 'lead_task_statuses', 'lead_activity_types')
+                 ORDER BY table_name
+                """,
+                String.class);
+        assertThat(crmReferenceTables).containsExactly(
+                "lead_activity_types",
+                "lead_sources",
+                "lead_statuses",
+                "lead_task_statuses",
+                "lost_reasons",
+                "tour_outcomes");
+
+        Integer prohibitedTableCount = jdbcTemplate.queryForObject(
+                """
+                SELECT count(*)
+                  FROM information_schema.tables
+                 WHERE table_schema = 'public'
+                   AND table_name IN (
+                       'leads', 'lead_phones', 'prospective_children', 'lead_assignments',
+                       'tours', 'pbx_configs', 'call_sessions', 'lead_conversions',
+                       'children', 'admission_applications')
+                """,
+                Integer.class);
+        assertThat(prohibitedTableCount).isZero();
 
         List<UserStatusSeed> userStatuses = jdbcTemplate.query(
                 "SELECT id, code FROM user_statuses ORDER BY code",
@@ -119,6 +161,12 @@ class DatabaseInfrastructureIntegrationTest {
                      + (SELECT count(*) FROM relationship_types)
                      + (SELECT count(*) FROM document_types)
                      + (SELECT count(*) FROM document_verification_statuses)
+                     + (SELECT count(*) FROM lead_sources)
+                     + (SELECT count(*) FROM lead_statuses)
+                     + (SELECT count(*) FROM lost_reasons)
+                     + (SELECT count(*) FROM tour_outcomes)
+                     + (SELECT count(*) FROM lead_task_statuses)
+                     + (SELECT count(*) FROM lead_activity_types)
                 """,
                 Integer.class);
         assertThat(unseededReferenceRowCount).isZero();
@@ -175,7 +223,9 @@ class DatabaseInfrastructureIntegrationTest {
                        'user_branch_access', 'refresh_tokens', 'languages', 'nationalities',
                        'gender_types', 'relationship_types', 'document_types',
                        'document_verification_statuses', 'stored_files',
-                       'application_settings', 'number_sequences')
+                       'application_settings', 'number_sequences', 'lead_sources',
+                       'lead_statuses', 'lost_reasons', 'tour_outcomes',
+                       'lead_task_statuses', 'lead_activity_types')
                 """,
                 (resultSet, rowNumber) -> new ForeignKeyMetadata(
                         resultSet.getString("source_table"),
@@ -228,7 +278,9 @@ class DatabaseInfrastructureIntegrationTest {
                        'user_branch_access', 'refresh_tokens', 'languages', 'nationalities',
                        'gender_types', 'relationship_types', 'document_types',
                        'document_verification_statuses', 'stored_files',
-                       'application_settings', 'number_sequences')
+                       'application_settings', 'number_sequences', 'lead_sources',
+                       'lead_statuses', 'lost_reasons', 'tour_outcomes',
+                       'lead_task_statuses', 'lead_activity_types')
                 """,
                 (resultSet, rowNumber) -> new ForeignKeyIndexCoverage(
                         resultSet.getString("source_table"),
@@ -347,7 +399,9 @@ class DatabaseInfrastructureIntegrationTest {
                        'user_branch_access', 'refresh_tokens', 'languages', 'nationalities',
                        'gender_types', 'relationship_types', 'document_types',
                        'document_verification_statuses', 'stored_files',
-                       'application_settings', 'number_sequences')
+                       'application_settings', 'number_sequences', 'lead_sources',
+                       'lead_statuses', 'lost_reasons', 'tour_outcomes',
+                       'lead_task_statuses', 'lead_activity_types')
                 """,
                 (resultSet, rowNumber) -> new ConstraintCounts(
                         resultSet.getInt("primary_keys"),
@@ -355,7 +409,7 @@ class DatabaseInfrastructureIntegrationTest {
                         resultSet.getInt("foreign_keys"),
                         resultSet.getInt("check_constraints")));
 
-        assertThat(constraintCounts).isEqualTo(new ConstraintCounts(24, 21, 37, 0));
+        assertThat(constraintCounts).isEqualTo(new ConstraintCounts(30, 27, 41, 0));
     }
 
     @Test
@@ -403,6 +457,288 @@ class DatabaseInfrastructureIntegrationTest {
                 .containsExactly("user_id", "role_id", "branch_id");
         assertThat(index.predicate().replaceAll("[()\\s]", ""))
                 .isEqualTo("valid_untilISNULL");
+    }
+
+    @Test
+    void definesExactCrmReferenceColumnMetadata() {
+        List<ColumnMetadata> actualColumns = jdbcTemplate.query(
+                """
+                SELECT table_name,
+                       column_name,
+                       data_type,
+                       character_maximum_length,
+                       is_nullable,
+                       column_default
+                  FROM information_schema.columns
+                 WHERE table_schema = 'public'
+                   AND table_name IN (
+                       'lead_sources', 'lead_statuses', 'lost_reasons',
+                       'tour_outcomes', 'lead_task_statuses', 'lead_activity_types')
+                """,
+                (resultSet, rowNumber) -> new ColumnMetadata(
+                        resultSet.getString("table_name"),
+                        resultSet.getString("column_name"),
+                        resultSet.getString("data_type"),
+                        resultSet.getObject("character_maximum_length", Integer.class),
+                        resultSet.getString("is_nullable").equals("YES"),
+                        resultSet.getString("column_default")));
+
+        assertThat(actualColumns).containsExactlyInAnyOrderElementsOf(expectedCrmReferenceColumns());
+    }
+
+    @Test
+    void definesExactCrmReferenceKeysAndConstraintCounts() {
+        List<KeyMetadata> actualKeys = jdbcTemplate.query(
+                """
+                SELECT table_relation.relname AS table_name,
+                       CASE constraint_definition.contype
+                           WHEN 'p' THEN 'PRIMARY KEY'
+                           WHEN 'u' THEN 'UNIQUE'
+                       END AS key_type,
+                       string_agg(attribute.attname, ',' ORDER BY key_column.ordinal_position)
+                           AS key_columns,
+                       index_definition.indnullsnotdistinct,
+                       access_method.amname AS access_method
+                  FROM pg_constraint constraint_definition
+                  JOIN pg_class table_relation
+                    ON table_relation.oid = constraint_definition.conrelid
+                  JOIN pg_namespace table_schema
+                    ON table_schema.oid = table_relation.relnamespace
+                  JOIN pg_index index_definition
+                    ON index_definition.indexrelid = constraint_definition.conindid
+                  JOIN pg_class index_relation
+                    ON index_relation.oid = index_definition.indexrelid
+                  JOIN pg_am access_method
+                    ON access_method.oid = index_relation.relam
+                  JOIN LATERAL unnest(constraint_definition.conkey) WITH ORDINALITY
+                       AS key_column(attribute_number, ordinal_position) ON TRUE
+                  JOIN pg_attribute attribute
+                    ON attribute.attrelid = table_relation.oid
+                   AND attribute.attnum = key_column.attribute_number
+                 WHERE table_schema.nspname = 'public'
+                   AND constraint_definition.contype IN ('p', 'u')
+                   AND table_relation.relname IN (
+                       'lead_sources', 'lead_statuses', 'lost_reasons',
+                       'tour_outcomes', 'lead_task_statuses', 'lead_activity_types')
+                 GROUP BY table_relation.relname,
+                          constraint_definition.oid,
+                          constraint_definition.contype,
+                          index_definition.indnullsnotdistinct,
+                          access_method.amname
+                """,
+                (resultSet, rowNumber) -> new KeyMetadata(
+                        resultSet.getString("table_name"),
+                        resultSet.getString("key_type"),
+                        resultSet.getString("key_columns"),
+                        resultSet.getBoolean("indnullsnotdistinct"),
+                        resultSet.getString("access_method")));
+
+        assertThat(actualKeys).containsExactlyInAnyOrderElementsOf(expectedCrmReferenceKeys());
+
+        ConstraintCounts constraintCounts = jdbcTemplate.queryForObject(
+                """
+                SELECT count(*) FILTER (WHERE constraint_definition.contype = 'p') AS primary_keys,
+                       count(*) FILTER (WHERE constraint_definition.contype = 'u') AS unique_constraints,
+                       count(*) FILTER (WHERE constraint_definition.contype = 'f') AS foreign_keys,
+                       count(*) FILTER (WHERE constraint_definition.contype = 'c') AS check_constraints
+                  FROM pg_constraint constraint_definition
+                  JOIN pg_class table_relation
+                    ON table_relation.oid = constraint_definition.conrelid
+                  JOIN pg_namespace table_schema
+                    ON table_schema.oid = table_relation.relnamespace
+                 WHERE table_schema.nspname = 'public'
+                   AND table_relation.relname IN (
+                       'lead_sources', 'lead_statuses', 'lost_reasons',
+                       'tour_outcomes', 'lead_task_statuses', 'lead_activity_types')
+                """,
+                (resultSet, rowNumber) -> new ConstraintCounts(
+                        resultSet.getInt("primary_keys"),
+                        resultSet.getInt("unique_constraints"),
+                        resultSet.getInt("foreign_keys"),
+                        resultSet.getInt("check_constraints")));
+        assertThat(constraintCounts).isEqualTo(new ConstraintCounts(6, 6, 4, 0));
+    }
+
+    @Test
+    void providesExactLeadingBtreeIndexesForCrmReferenceForeignKeys() {
+        List<ForeignKeyIndexMetadata> indexes = jdbcTemplate.query(
+                """
+                SELECT table_relation.relname AS table_name,
+                       index_relation.relname AS index_name,
+                       pg_get_indexdef(index_definition.indexrelid, 1, TRUE) AS first_key,
+                       access_method.amname AS access_method,
+                       index_definition.indisvalid,
+                       index_definition.indisready,
+                       index_definition.indpred IS NOT NULL AS partial
+                  FROM pg_index index_definition
+                  JOIN pg_class index_relation
+                    ON index_relation.oid = index_definition.indexrelid
+                  JOIN pg_class table_relation
+                    ON table_relation.oid = index_definition.indrelid
+                  JOIN pg_namespace table_schema
+                    ON table_schema.oid = table_relation.relnamespace
+                  JOIN pg_am access_method
+                    ON access_method.oid = index_relation.relam
+                 WHERE table_schema.nspname = 'public'
+                   AND index_relation.relname IN (
+                       'idx_lead_sources_organization_id',
+                       'idx_lead_statuses_organization_id',
+                       'idx_lost_reasons_organization_id',
+                       'idx_tour_outcomes_organization_id')
+                """,
+                (resultSet, rowNumber) -> new ForeignKeyIndexMetadata(
+                        resultSet.getString("table_name"),
+                        resultSet.getString("index_name"),
+                        resultSet.getString("first_key"),
+                        resultSet.getString("access_method"),
+                        resultSet.getBoolean("indisvalid"),
+                        resultSet.getBoolean("indisready"),
+                        resultSet.getBoolean("partial")));
+
+        assertThat(indexes).containsExactlyInAnyOrder(
+                foreignKeyIndex("lead_sources", "idx_lead_sources_organization_id"),
+                foreignKeyIndex("lead_statuses", "idx_lead_statuses_organization_id"),
+                foreignKeyIndex("lost_reasons", "idx_lost_reasons_organization_id"),
+                foreignKeyIndex("tour_outcomes", "idx_tour_outcomes_organization_id"));
+    }
+
+    @Test
+    void definesExactCrmReferenceIndexInventory() {
+        List<IndexMetadata> indexes = jdbcTemplate.query(
+                """
+                SELECT table_relation.relname AS table_name,
+                       index_relation.relname AS index_name,
+                       index_definition.indisunique,
+                       index_definition.indnullsnotdistinct,
+                       access_method.amname AS access_method,
+                       index_definition.indisvalid,
+                       index_definition.indisready,
+                       index_definition.indpred IS NOT NULL AS partial,
+                       string_agg(attribute.attname, ',' ORDER BY key_position.position)
+                           AS key_columns
+                  FROM pg_index index_definition
+                  JOIN pg_class index_relation
+                    ON index_relation.oid = index_definition.indexrelid
+                  JOIN pg_class table_relation
+                    ON table_relation.oid = index_definition.indrelid
+                  JOIN pg_namespace table_schema
+                    ON table_schema.oid = table_relation.relnamespace
+                  JOIN pg_am access_method
+                    ON access_method.oid = index_relation.relam
+                  JOIN LATERAL generate_series(0, index_definition.indnkeyatts - 1)
+                       AS key_position(position) ON TRUE
+                  JOIN pg_attribute attribute
+                    ON attribute.attrelid = table_relation.oid
+                   AND attribute.attnum = index_definition.indkey[key_position.position]
+                 WHERE table_schema.nspname = 'public'
+                   AND table_relation.relname IN (
+                       'lead_sources', 'lead_statuses', 'lost_reasons',
+                       'tour_outcomes', 'lead_task_statuses', 'lead_activity_types')
+                   AND NOT index_definition.indisprimary
+                 GROUP BY table_relation.relname,
+                          index_relation.relname,
+                          index_definition.indisunique,
+                          index_definition.indnullsnotdistinct,
+                          access_method.amname,
+                          index_definition.indisvalid,
+                          index_definition.indisready,
+                          index_definition.indpred
+                """,
+                (resultSet, rowNumber) -> new IndexMetadata(
+                        resultSet.getString("table_name"),
+                        resultSet.getString("index_name"),
+                        resultSet.getBoolean("indisunique"),
+                        resultSet.getBoolean("indnullsnotdistinct"),
+                        resultSet.getString("access_method"),
+                        resultSet.getBoolean("indisvalid"),
+                        resultSet.getBoolean("indisready"),
+                        resultSet.getBoolean("partial"),
+                        resultSet.getString("key_columns")));
+
+        assertThat(indexes).containsExactlyInAnyOrderElementsOf(expectedCrmReferenceIndexes());
+    }
+
+    @Test
+    void hasNoDatabaseGeneratedCrmReferenceUuidsOrUuidExtensions() {
+        List<ColumnDefaultMetadata> idColumns = jdbcTemplate.query(
+                """
+                SELECT table_name, column_default
+                  FROM information_schema.columns
+                 WHERE table_schema = 'public'
+                   AND column_name = 'id'
+                   AND table_name IN (
+                       'lead_sources', 'lead_statuses', 'lost_reasons',
+                       'tour_outcomes', 'lead_task_statuses', 'lead_activity_types')
+                 ORDER BY table_name
+                """,
+                (resultSet, rowNumber) -> new ColumnDefaultMetadata(
+                        resultSet.getString("table_name"),
+                        resultSet.getString("column_default")));
+        assertThat(idColumns).containsExactly(
+                new ColumnDefaultMetadata("lead_activity_types", null),
+                new ColumnDefaultMetadata("lead_sources", null),
+                new ColumnDefaultMetadata("lead_statuses", null),
+                new ColumnDefaultMetadata("lead_task_statuses", null),
+                new ColumnDefaultMetadata("lost_reasons", null),
+                new ColumnDefaultMetadata("tour_outcomes", null));
+
+        List<String> uuidExtensions = jdbcTemplate.queryForList(
+                "SELECT extname FROM pg_extension WHERE extname IN ('pgcrypto', 'uuid-ossp')",
+                String.class);
+        assertThat(uuidExtensions).isEmpty();
+    }
+
+    @Test
+    void rejectsDuplicateOrganizationScopedCrmReferenceCodes() {
+        for (String tableName : organizationScopedCrmReferenceTables()) {
+            UUID organizationId = createOrganization();
+            String code = "DUPLICATE_" + UUID.randomUUID();
+            try {
+                insertOrganizationScopedCrmReference(tableName, organizationId, code);
+                assertSqlState(
+                        "23505",
+                        () -> insertOrganizationScopedCrmReference(tableName, organizationId, code));
+                assertThat(countOrganizationScopedCrmReference(tableName, code)).isEqualTo(1);
+            } finally {
+                deleteCrmReferenceRows(tableName, code);
+                deleteOrganization(organizationId);
+            }
+        }
+    }
+
+    @Test
+    void permitsOrganizationScopedCrmReferenceCodesAcrossOrganizations() {
+        for (String tableName : organizationScopedCrmReferenceTables()) {
+            UUID firstOrganizationId = createOrganization();
+            UUID secondOrganizationId = createOrganization();
+            String code = "SHARED_" + UUID.randomUUID();
+            try {
+                insertOrganizationScopedCrmReference(tableName, firstOrganizationId, code);
+                insertOrganizationScopedCrmReference(tableName, secondOrganizationId, code);
+                assertThat(countOrganizationScopedCrmReference(tableName, code)).isEqualTo(2);
+            } finally {
+                deleteCrmReferenceRows(tableName, code);
+                deleteOrganization(firstOrganizationId);
+                deleteOrganization(secondOrganizationId);
+            }
+        }
+    }
+
+    @Test
+    void enforcesGlobalCrmReferenceCodeUniquenessAndAllowsDifferentCodes() {
+        for (String tableName : globalCrmReferenceTables()) {
+            String firstCode = "GLOBAL_FIRST_" + UUID.randomUUID();
+            String secondCode = "GLOBAL_SECOND_" + UUID.randomUUID();
+            try {
+                insertGlobalCrmReference(tableName, firstCode);
+                assertSqlState("23505", () -> insertGlobalCrmReference(tableName, firstCode));
+                insertGlobalCrmReference(tableName, secondCode);
+                assertThat(countGlobalCrmReferences(tableName, firstCode, secondCode)).isEqualTo(2);
+            } finally {
+                deleteCrmReferenceRows(tableName, firstCode);
+                deleteCrmReferenceRows(tableName, secondCode);
+            }
+        }
     }
 
     @Test
@@ -794,6 +1130,109 @@ class DatabaseInfrastructureIntegrationTest {
         assertThat(rowCount).isEqualTo(1);
     }
 
+    private List<String> organizationScopedCrmReferenceTables() {
+        return List.of("lead_sources", "lead_statuses", "lost_reasons", "tour_outcomes");
+    }
+
+    private List<String> globalCrmReferenceTables() {
+        return List.of("lead_task_statuses", "lead_activity_types");
+    }
+
+    private void insertOrganizationScopedCrmReference(
+            String tableName, UUID organizationId, String code) {
+        switch (tableName) {
+            case "lead_sources" -> jdbcTemplate.update(
+                    """
+                    INSERT INTO lead_sources (
+                        id, organization_id, code, name, source_type)
+                    VALUES (?, ?, ?, 'Integration test source', 'INTEGRATION_TEST')
+                    """,
+                    UUID.randomUUID(),
+                    organizationId,
+                    code);
+            case "lead_statuses" -> jdbcTemplate.update(
+                    """
+                    INSERT INTO lead_statuses (
+                        id, organization_id, code, name, pipeline_order)
+                    VALUES (?, ?, ?, 'Integration test status', 1)
+                    """,
+                    UUID.randomUUID(),
+                    organizationId,
+                    code);
+            case "lost_reasons" -> jdbcTemplate.update(
+                    """
+                    INSERT INTO lost_reasons (id, organization_id, code, name)
+                    VALUES (?, ?, ?, 'Integration test lost reason')
+                    """,
+                    UUID.randomUUID(),
+                    organizationId,
+                    code);
+            case "tour_outcomes" -> jdbcTemplate.update(
+                    """
+                    INSERT INTO tour_outcomes (id, organization_id, code, name)
+                    VALUES (?, ?, ?, 'Integration test tour outcome')
+                    """,
+                    UUID.randomUUID(),
+                    organizationId,
+                    code);
+            default -> throw new IllegalArgumentException("Unexpected CRM reference table: " + tableName);
+        }
+    }
+
+    private void insertGlobalCrmReference(String tableName, String code) {
+        switch (tableName) {
+            case "lead_task_statuses" -> jdbcTemplate.update(
+                    """
+                    INSERT INTO lead_task_statuses (id, code, name)
+                    VALUES (?, ?, 'Integration test task status')
+                    """,
+                    UUID.randomUUID(),
+                    code);
+            case "lead_activity_types" -> jdbcTemplate.update(
+                    """
+                    INSERT INTO lead_activity_types (id, code, name)
+                    VALUES (?, ?, 'Integration test activity type')
+                    """,
+                    UUID.randomUUID(),
+                    code);
+            default -> throw new IllegalArgumentException("Unexpected CRM reference table: " + tableName);
+        }
+    }
+
+    private int countOrganizationScopedCrmReference(String tableName, String code) {
+        return jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM " + validatedCrmReferenceTable(tableName) + " WHERE code = ?",
+                Integer.class,
+                code);
+    }
+
+    private int countGlobalCrmReferences(String tableName, String firstCode, String secondCode) {
+        return jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM "
+                        + validatedCrmReferenceTable(tableName)
+                        + " WHERE code IN (?, ?)",
+                Integer.class,
+                firstCode,
+                secondCode);
+    }
+
+    private void deleteCrmReferenceRows(String tableName, String code) {
+        jdbcTemplate.update(
+                "DELETE FROM " + validatedCrmReferenceTable(tableName) + " WHERE code = ?", code);
+    }
+
+    private String validatedCrmReferenceTable(String tableName) {
+        if (organizationScopedCrmReferenceTables().contains(tableName)
+                || globalCrmReferenceTables().contains(tableName)) {
+            return tableName;
+        }
+        throw new IllegalArgumentException("Unexpected CRM reference table: " + tableName);
+    }
+
+    private void deleteOrganization(UUID organizationId) {
+        jdbcTemplate.update("DELETE FROM organizations WHERE id = ?", organizationId);
+    }
+
     private UUID createOrganization() {
         UUID organizationId = UUID.randomUUID();
 
@@ -955,6 +1394,149 @@ class DatabaseInfrastructureIntegrationTest {
         Throwable mostSpecificCause = exception.getMostSpecificCause();
         assertThat(mostSpecificCause).isInstanceOf(SQLException.class);
         assertThat(((SQLException) mostSpecificCause).getSQLState()).isEqualTo(expectedSqlState);
+    }
+
+    private List<ColumnMetadata> expectedCrmReferenceColumns() {
+        return """
+                lead_sources|id|uuid||false|
+                lead_sources|organization_id|uuid||false|
+                lead_sources|code|character varying|50|false|
+                lead_sources|name|character varying|120|false|
+                lead_sources|source_type|character varying|50|false|
+                lead_sources|is_active|boolean||false|true
+                lead_sources|sort_order|integer||false|0
+                lead_statuses|id|uuid||false|
+                lead_statuses|organization_id|uuid||false|
+                lead_statuses|code|character varying|50|false|
+                lead_statuses|name|character varying|120|false|
+                lead_statuses|pipeline_order|integer||false|
+                lead_statuses|is_initial|boolean||false|false
+                lead_statuses|is_success|boolean||false|false
+                lead_statuses|is_lost|boolean||false|false
+                lead_statuses|is_archived|boolean||false|false
+                lead_statuses|is_active|boolean||false|true
+                lost_reasons|id|uuid||false|
+                lost_reasons|organization_id|uuid||false|
+                lost_reasons|code|character varying|50|false|
+                lost_reasons|name|character varying|120|false|
+                lost_reasons|is_active|boolean||false|true
+                tour_outcomes|id|uuid||false|
+                tour_outcomes|organization_id|uuid||false|
+                tour_outcomes|code|character varying|50|false|
+                tour_outcomes|name|character varying|120|false|
+                tour_outcomes|is_active|boolean||false|true
+                lead_task_statuses|id|uuid||false|
+                lead_task_statuses|code|character varying|50|false|
+                lead_task_statuses|name|character varying|100|false|
+                lead_task_statuses|is_closed|boolean||false|false
+                lead_task_statuses|is_active|boolean||false|true
+                lead_activity_types|id|uuid||false|
+                lead_activity_types|code|character varying|50|false|
+                lead_activity_types|name|character varying|100|false|
+                lead_activity_types|is_active|boolean||false|true
+                """
+                .lines()
+                .map(String::strip)
+                .filter(line -> !line.isEmpty())
+                .map(line -> {
+                    String[] fields = line.split("\\|", -1);
+                    Integer length = fields[3].isEmpty() ? null : Integer.valueOf(fields[3]);
+                    String defaultValue = fields[5].isEmpty() ? null : fields[5];
+                    return new ColumnMetadata(
+                            fields[0],
+                            fields[1],
+                            fields[2],
+                            length,
+                            Boolean.parseBoolean(fields[4]),
+                            defaultValue);
+                })
+                .toList();
+    }
+
+    private List<KeyMetadata> expectedCrmReferenceKeys() {
+        return List.of(
+                key("lead_sources", "PRIMARY KEY", "id", false),
+                key("lead_sources", "UNIQUE", "organization_id,code", false),
+                key("lead_statuses", "PRIMARY KEY", "id", false),
+                key("lead_statuses", "UNIQUE", "organization_id,code", false),
+                key("lost_reasons", "PRIMARY KEY", "id", false),
+                key("lost_reasons", "UNIQUE", "organization_id,code", false),
+                key("tour_outcomes", "PRIMARY KEY", "id", false),
+                key("tour_outcomes", "UNIQUE", "organization_id,code", false),
+                key("lead_task_statuses", "PRIMARY KEY", "id", false),
+                key("lead_task_statuses", "UNIQUE", "code", false),
+                key("lead_activity_types", "PRIMARY KEY", "id", false),
+                key("lead_activity_types", "UNIQUE", "code", false));
+    }
+
+    private ForeignKeyIndexMetadata foreignKeyIndex(String tableName, String indexName) {
+        return new ForeignKeyIndexMetadata(
+                tableName, indexName, "organization_id", "btree", true, true, false);
+    }
+
+    private List<IndexMetadata> expectedCrmReferenceIndexes() {
+        return List.of(
+                index(
+                        "lead_sources",
+                        "uk_lead_sources_organization_code",
+                        true,
+                        "organization_id,code"),
+                index(
+                        "lead_sources",
+                        "idx_lead_sources_organization_id",
+                        false,
+                        "organization_id"),
+                index(
+                        "lead_statuses",
+                        "uk_lead_statuses_organization_code",
+                        true,
+                        "organization_id,code"),
+                index(
+                        "lead_statuses",
+                        "idx_lead_statuses_organization_id",
+                        false,
+                        "organization_id"),
+                index(
+                        "lead_statuses",
+                        "idx_lead_statuses_pipeline_order",
+                        false,
+                        "pipeline_order"),
+                index(
+                        "lost_reasons",
+                        "uk_lost_reasons_organization_code",
+                        true,
+                        "organization_id,code"),
+                index(
+                        "lost_reasons",
+                        "idx_lost_reasons_organization_id",
+                        false,
+                        "organization_id"),
+                index(
+                        "tour_outcomes",
+                        "uk_tour_outcomes_organization_code",
+                        true,
+                        "organization_id,code"),
+                index(
+                        "tour_outcomes",
+                        "idx_tour_outcomes_organization_id",
+                        false,
+                        "organization_id"),
+                index("lead_task_statuses", "uk_lead_task_statuses_code", true, "code"),
+                index("lead_activity_types", "uk_lead_activity_types_code", true, "code"));
+    }
+
+    private IndexMetadata index(
+            String tableName, String indexName, boolean unique, String keyColumns) {
+        return new IndexMetadata(
+                tableName,
+                indexName,
+                unique,
+                false,
+                "btree",
+                true,
+                true,
+                false,
+                keyColumns);
     }
 
     private List<ColumnMetadata> expectedRemainingColumns() {
@@ -1158,7 +1740,11 @@ class DatabaseInfrastructureIntegrationTest {
                 restrictedForeignKey("application_settings", "branch_id", "branches"),
                 restrictedForeignKey("application_settings", "updated_by", "users"),
                 restrictedForeignKey("number_sequences", "organization_id", "organizations"),
-                restrictedForeignKey("number_sequences", "branch_id", "branches"));
+                restrictedForeignKey("number_sequences", "branch_id", "branches"),
+                restrictedForeignKey("lead_sources", "organization_id", "organizations"),
+                restrictedForeignKey("lead_statuses", "organization_id", "organizations"),
+                restrictedForeignKey("lost_reasons", "organization_id", "organizations"),
+                restrictedForeignKey("tour_outcomes", "organization_id", "organizations"));
     }
 
     private ForeignKeyMetadata restrictedForeignKey(
@@ -1199,6 +1785,28 @@ class DatabaseInfrastructureIntegrationTest {
             String updateAction) {}
 
     private record ForeignKeyIndexCoverage(String sourceTable, String sourceColumn, boolean covered) {}
+
+    private record ForeignKeyIndexMetadata(
+            String tableName,
+            String indexName,
+            String firstKey,
+            String accessMethod,
+            boolean valid,
+            boolean ready,
+            boolean partial) {}
+
+    private record IndexMetadata(
+            String tableName,
+            String indexName,
+            boolean unique,
+            boolean nullsNotDistinct,
+            String accessMethod,
+            boolean valid,
+            boolean ready,
+            boolean partial,
+            String keyColumns) {}
+
+    private record ColumnDefaultMetadata(String tableName, String defaultValue) {}
 
     private record PartialUniqueIndexMetadata(
             boolean unique,
