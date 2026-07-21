@@ -53,7 +53,7 @@ class DatabaseInfrastructureIntegrationTest {
     private ApplicationContext applicationContext;
 
     @Test
-    void appliesOnlyTheApprovedSchemasThroughV8() {
+    void appliesOnlyTheApprovedSchemasThroughV9() {
         Integer connectivityCheck = jdbcTemplate.queryForObject("SELECT 1", Integer.class);
         assertThat(connectivityCheck).isEqualTo(1);
 
@@ -64,7 +64,7 @@ class DatabaseInfrastructureIntegrationTest {
         assertThat(flyway.info().pending()).isEmpty();
         assertThat(flyway.info().applied())
                 .extracting(migration -> migration.getVersion().getVersion())
-                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8");
+                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9");
 
         List<String> foundationTables = jdbcTemplate.queryForList(
                 """
@@ -87,11 +87,17 @@ class DatabaseInfrastructureIntegrationTest {
                 "employees",
                 "gender_types",
                 "languages",
+                "lead_activities",
                 "lead_activity_types",
+                "lead_assignments",
+                "lead_duplicates",
+                "lead_notes",
                 "lead_phones",
                 "lead_sources",
+                "lead_status_history",
                 "lead_statuses",
                 "lead_task_statuses",
+                "lead_tasks",
                 "leads",
                 "lost_reasons",
                 "nationalities",
@@ -106,6 +112,7 @@ class DatabaseInfrastructureIntegrationTest {
                 "roles",
                 "stored_files",
                 "tour_outcomes",
+                "tours",
                 "user_branch_access",
                 "user_credentials",
                 "user_roles",
@@ -143,14 +150,32 @@ class DatabaseInfrastructureIntegrationTest {
         assertThat(crmLeadCoreTables)
                 .containsExactly("lead_phones", "leads", "prospective_children");
 
+        List<String> crmWorkflowTables = jdbcTemplate.queryForList(
+                """
+                SELECT table_name
+                  FROM information_schema.tables
+                 WHERE table_schema = 'public'
+                   AND table_name IN (
+                       'lead_assignments', 'lead_status_history', 'lead_activities',
+                       'lead_notes', 'lead_tasks', 'tours', 'lead_duplicates')
+                 ORDER BY table_name
+                """,
+                String.class);
+        assertThat(crmWorkflowTables).containsExactly(
+                "lead_activities",
+                "lead_assignments",
+                "lead_duplicates",
+                "lead_notes",
+                "lead_status_history",
+                "lead_tasks",
+                "tours");
+
         Integer prohibitedTableCount = jdbcTemplate.queryForObject(
                 """
                 SELECT count(*)
                   FROM information_schema.tables
                  WHERE table_schema = 'public'
                    AND table_name IN (
-                       'lead_assignments', 'lead_status_history', 'lead_activities',
-                       'lead_notes', 'lead_tasks', 'tours', 'lead_duplicates',
                        'pbx_configs', 'extensions', 'sip_accounts', 'phone_numbers',
                        'call_sessions', 'call_participants', 'call_events',
                        'call_recordings', 'lead_calls', 'webhook_events',
@@ -188,6 +213,13 @@ class DatabaseInfrastructureIntegrationTest {
                      + (SELECT count(*) FROM leads)
                      + (SELECT count(*) FROM lead_phones)
                      + (SELECT count(*) FROM prospective_children)
+                     + (SELECT count(*) FROM lead_assignments)
+                     + (SELECT count(*) FROM lead_status_history)
+                     + (SELECT count(*) FROM lead_activities)
+                     + (SELECT count(*) FROM lead_notes)
+                     + (SELECT count(*) FROM lead_tasks)
+                     + (SELECT count(*) FROM tours)
+                     + (SELECT count(*) FROM lead_duplicates)
                 """,
                 Integer.class);
         assertThat(unseededReferenceRowCount).isZero();
@@ -247,7 +279,9 @@ class DatabaseInfrastructureIntegrationTest {
                        'application_settings', 'number_sequences', 'lead_sources',
                        'lead_statuses', 'lost_reasons', 'tour_outcomes',
                        'lead_task_statuses', 'lead_activity_types', 'leads',
-                       'lead_phones', 'prospective_children')
+                       'lead_phones', 'prospective_children', 'lead_assignments',
+                       'lead_status_history', 'lead_activities', 'lead_notes',
+                       'lead_tasks', 'tours', 'lead_duplicates')
                 """,
                 (resultSet, rowNumber) -> new ForeignKeyMetadata(
                         resultSet.getString("source_table"),
@@ -303,7 +337,9 @@ class DatabaseInfrastructureIntegrationTest {
                        'application_settings', 'number_sequences', 'lead_sources',
                        'lead_statuses', 'lost_reasons', 'tour_outcomes',
                        'lead_task_statuses', 'lead_activity_types', 'leads',
-                       'lead_phones', 'prospective_children')
+                       'lead_phones', 'prospective_children', 'lead_assignments',
+                       'lead_status_history', 'lead_activities', 'lead_notes',
+                       'lead_tasks', 'tours', 'lead_duplicates')
                 """,
                 (resultSet, rowNumber) -> new ForeignKeyIndexCoverage(
                         resultSet.getString("source_table"),
@@ -425,7 +461,9 @@ class DatabaseInfrastructureIntegrationTest {
                        'application_settings', 'number_sequences', 'lead_sources',
                        'lead_statuses', 'lost_reasons', 'tour_outcomes',
                        'lead_task_statuses', 'lead_activity_types', 'leads',
-                       'lead_phones', 'prospective_children')
+                       'lead_phones', 'prospective_children', 'lead_assignments',
+                       'lead_status_history', 'lead_activities', 'lead_notes',
+                       'lead_tasks', 'tours', 'lead_duplicates')
                 """,
                 (resultSet, rowNumber) -> new ConstraintCounts(
                         resultSet.getInt("primary_keys"),
@@ -433,7 +471,7 @@ class DatabaseInfrastructureIntegrationTest {
                         resultSet.getInt("foreign_keys"),
                         resultSet.getInt("check_constraints")));
 
-        assertThat(constraintCounts).isEqualTo(new ConstraintCounts(33, 27, 52, 0));
+        assertThat(constraintCounts).isEqualTo(new ConstraintCounts(40, 28, 76, 1));
     }
 
     @Test
@@ -693,22 +731,31 @@ class DatabaseInfrastructureIntegrationTest {
                    AND table_name IN (
                        'lead_sources', 'lead_statuses', 'lost_reasons',
                        'tour_outcomes', 'lead_task_statuses', 'lead_activity_types',
-                       'leads', 'lead_phones', 'prospective_children')
+                       'leads', 'lead_phones', 'prospective_children',
+                       'lead_assignments', 'lead_status_history', 'lead_activities',
+                       'lead_notes', 'lead_tasks', 'tours', 'lead_duplicates')
                  ORDER BY table_name
                 """,
                 (resultSet, rowNumber) -> new ColumnDefaultMetadata(
                         resultSet.getString("table_name"),
                         resultSet.getString("column_default")));
         assertThat(idColumns).containsExactly(
+                new ColumnDefaultMetadata("lead_activities", null),
                 new ColumnDefaultMetadata("lead_activity_types", null),
+                new ColumnDefaultMetadata("lead_assignments", null),
+                new ColumnDefaultMetadata("lead_duplicates", null),
+                new ColumnDefaultMetadata("lead_notes", null),
                 new ColumnDefaultMetadata("lead_phones", null),
                 new ColumnDefaultMetadata("lead_sources", null),
+                new ColumnDefaultMetadata("lead_status_history", null),
                 new ColumnDefaultMetadata("lead_statuses", null),
                 new ColumnDefaultMetadata("lead_task_statuses", null),
+                new ColumnDefaultMetadata("lead_tasks", null),
                 new ColumnDefaultMetadata("leads", null),
                 new ColumnDefaultMetadata("lost_reasons", null),
                 new ColumnDefaultMetadata("prospective_children", null),
-                new ColumnDefaultMetadata("tour_outcomes", null));
+                new ColumnDefaultMetadata("tour_outcomes", null),
+                new ColumnDefaultMetadata("tours", null));
 
         List<String> uuidExtensions = jdbcTemplate.queryForList(
                 "SELECT extname FROM pg_extension WHERE extname IN ('pgcrypto', 'uuid-ossp')",
@@ -927,7 +974,505 @@ class DatabaseInfrastructureIntegrationTest {
                 """,
                 String.class);
         assertThat(partialUniqueIndexes).containsExactly(
-                "ux_lead_phones_primary_lead", "ux_user_roles_current_assignment");
+                "ux_lead_assignments_active_lead",
+                "ux_lead_phones_primary_lead",
+                "ux_user_roles_current_assignment");
+    }
+
+    @Test
+    void definesExactCrmWorkflowColumnMetadata() {
+        List<ColumnMetadata> actualColumns = jdbcTemplate.query(
+                """
+                SELECT table_name,
+                       column_name,
+                       data_type,
+                       character_maximum_length,
+                       is_nullable,
+                       column_default
+                  FROM information_schema.columns
+                 WHERE table_schema = 'public'
+                   AND table_name IN (
+                       'lead_assignments', 'lead_status_history', 'lead_activities',
+                       'lead_notes', 'lead_tasks', 'tours', 'lead_duplicates')
+                """,
+                (resultSet, rowNumber) -> new ColumnMetadata(
+                        resultSet.getString("table_name"),
+                        resultSet.getString("column_name"),
+                        resultSet.getString("data_type"),
+                        resultSet.getObject("character_maximum_length", Integer.class),
+                        "YES".equals(resultSet.getString("is_nullable")),
+                        resultSet.getString("column_default")));
+
+        assertThat(actualColumns).containsExactlyInAnyOrderElementsOf(expectedCrmWorkflowColumns());
+    }
+
+    @Test
+    void definesExactCrmWorkflowKeysChecksAndConstraintCounts() {
+        List<KeyMetadata> actualKeys = jdbcTemplate.query(
+                """
+                SELECT table_relation.relname AS table_name,
+                       CASE constraint_definition.contype
+                           WHEN 'p' THEN 'PRIMARY KEY'
+                           WHEN 'u' THEN 'UNIQUE'
+                       END AS key_type,
+                       string_agg(attribute.attname, ',' ORDER BY key_position.ordinality)
+                           AS key_columns,
+                       index_definition.indnullsnotdistinct,
+                       access_method.amname AS access_method
+                  FROM pg_constraint constraint_definition
+                  JOIN pg_class table_relation
+                    ON table_relation.oid = constraint_definition.conrelid
+                  JOIN pg_namespace table_schema
+                    ON table_schema.oid = table_relation.relnamespace
+                  JOIN pg_index index_definition
+                    ON index_definition.indexrelid = constraint_definition.conindid
+                  JOIN pg_class index_relation
+                    ON index_relation.oid = index_definition.indexrelid
+                  JOIN pg_am access_method
+                    ON access_method.oid = index_relation.relam
+                  JOIN LATERAL unnest(constraint_definition.conkey) WITH ORDINALITY
+                       AS key_position(attribute_number, ordinality) ON TRUE
+                  JOIN pg_attribute attribute
+                    ON attribute.attrelid = table_relation.oid
+                   AND attribute.attnum = key_position.attribute_number
+                 WHERE table_schema.nspname = 'public'
+                   AND constraint_definition.contype IN ('p', 'u')
+                   AND table_relation.relname IN (
+                       'lead_assignments', 'lead_status_history', 'lead_activities',
+                       'lead_notes', 'lead_tasks', 'tours', 'lead_duplicates')
+                 GROUP BY table_relation.relname,
+                          constraint_definition.oid,
+                          constraint_definition.contype,
+                          index_definition.indnullsnotdistinct,
+                          access_method.amname
+                """,
+                (resultSet, rowNumber) -> new KeyMetadata(
+                        resultSet.getString("table_name"),
+                        resultSet.getString("key_type"),
+                        resultSet.getString("key_columns"),
+                        resultSet.getBoolean("indnullsnotdistinct"),
+                        resultSet.getString("access_method")));
+        assertThat(actualKeys).containsExactlyInAnyOrderElementsOf(expectedCrmWorkflowKeys());
+
+        List<String> checks = jdbcTemplate.queryForList(
+                """
+                SELECT constraint_definition.conname || '|' ||
+                       pg_get_constraintdef(constraint_definition.oid, TRUE)
+                  FROM pg_constraint constraint_definition
+                  JOIN pg_class table_relation
+                    ON table_relation.oid = constraint_definition.conrelid
+                  JOIN pg_namespace table_schema
+                    ON table_schema.oid = table_relation.relnamespace
+                 WHERE table_schema.nspname = 'public'
+                   AND table_relation.relname IN (
+                       'lead_assignments', 'lead_status_history', 'lead_activities',
+                       'lead_notes', 'lead_tasks', 'tours', 'lead_duplicates')
+                   AND constraint_definition.contype = 'c'
+                """,
+                String.class);
+        assertThat(checks).hasSize(1);
+        assertThat(checks.getFirst().replaceAll("[()\\s]", ""))
+                .isEqualTo("ck_lead_duplicates_not_self|CHECKlead_id<>duplicate_of_lead_id");
+
+        ConstraintCounts constraintCounts = jdbcTemplate.queryForObject(
+                """
+                SELECT count(*) FILTER (WHERE constraint_definition.contype = 'p') AS primary_keys,
+                       count(*) FILTER (WHERE constraint_definition.contype = 'u') AS unique_constraints,
+                       count(*) FILTER (WHERE constraint_definition.contype = 'f') AS foreign_keys,
+                       count(*) FILTER (WHERE constraint_definition.contype = 'c') AS check_constraints
+                  FROM pg_constraint constraint_definition
+                  JOIN pg_class table_relation
+                    ON table_relation.oid = constraint_definition.conrelid
+                  JOIN pg_namespace table_schema
+                    ON table_schema.oid = table_relation.relnamespace
+                 WHERE table_schema.nspname = 'public'
+                   AND table_relation.relname IN (
+                       'lead_assignments', 'lead_status_history', 'lead_activities',
+                       'lead_notes', 'lead_tasks', 'tours', 'lead_duplicates')
+                """,
+                (resultSet, rowNumber) -> new ConstraintCounts(
+                        resultSet.getInt("primary_keys"),
+                        resultSet.getInt("unique_constraints"),
+                        resultSet.getInt("foreign_keys"),
+                        resultSet.getInt("check_constraints")));
+        assertThat(constraintCounts).isEqualTo(new ConstraintCounts(7, 1, 24, 1));
+
+        Integer applicationTriggerCount = jdbcTemplate.queryForObject(
+                """
+                SELECT count(*)
+                  FROM pg_trigger trigger_definition
+                  JOIN pg_class table_relation
+                    ON table_relation.oid = trigger_definition.tgrelid
+                  JOIN pg_namespace table_schema
+                    ON table_schema.oid = table_relation.relnamespace
+                 WHERE table_schema.nspname = 'public'
+                   AND NOT trigger_definition.tgisinternal
+                   AND table_relation.relname IN (
+                       'lead_assignments', 'lead_status_history', 'lead_activities',
+                       'lead_notes', 'lead_tasks', 'tours', 'lead_duplicates')
+                """,
+                Integer.class);
+        assertThat(applicationTriggerCount).isZero();
+    }
+
+    @Test
+    void definesExactCrmWorkflowIndexInventory() {
+        List<IndexMetadata> indexes = jdbcTemplate.query(
+                """
+                SELECT table_relation.relname AS table_name,
+                       index_relation.relname AS index_name,
+                       index_definition.indisunique,
+                       index_definition.indnullsnotdistinct,
+                       access_method.amname AS access_method,
+                       index_definition.indisvalid,
+                       index_definition.indisready,
+                       index_definition.indpred IS NOT NULL AS partial,
+                       string_agg(attribute.attname, ',' ORDER BY key_position.position)
+                           AS key_columns
+                  FROM pg_index index_definition
+                  JOIN pg_class index_relation
+                    ON index_relation.oid = index_definition.indexrelid
+                  JOIN pg_class table_relation
+                    ON table_relation.oid = index_definition.indrelid
+                  JOIN pg_namespace table_schema
+                    ON table_schema.oid = table_relation.relnamespace
+                  JOIN pg_am access_method
+                    ON access_method.oid = index_relation.relam
+                  JOIN LATERAL generate_series(0, index_definition.indnkeyatts - 1)
+                       AS key_position(position) ON TRUE
+                  JOIN pg_attribute attribute
+                    ON attribute.attrelid = table_relation.oid
+                   AND attribute.attnum = index_definition.indkey[key_position.position]
+                 WHERE table_schema.nspname = 'public'
+                   AND table_relation.relname IN (
+                       'lead_assignments', 'lead_status_history', 'lead_activities',
+                       'lead_notes', 'lead_tasks', 'tours', 'lead_duplicates')
+                   AND NOT index_definition.indisprimary
+                 GROUP BY table_relation.relname,
+                          index_relation.relname,
+                          index_definition.indisunique,
+                          index_definition.indnullsnotdistinct,
+                          access_method.amname,
+                          index_definition.indisvalid,
+                          index_definition.indisready,
+                          index_definition.indpred
+                """,
+                (resultSet, rowNumber) -> new IndexMetadata(
+                        resultSet.getString("table_name"),
+                        resultSet.getString("index_name"),
+                        resultSet.getBoolean("indisunique"),
+                        resultSet.getBoolean("indnullsnotdistinct"),
+                        resultSet.getString("access_method"),
+                        resultSet.getBoolean("indisvalid"),
+                        resultSet.getBoolean("indisready"),
+                        resultSet.getBoolean("partial"),
+                        resultSet.getString("key_columns")));
+        assertThat(indexes).containsExactlyInAnyOrderElementsOf(expectedCrmWorkflowIndexes());
+    }
+
+    @Test
+    void definesActiveAssignmentIndexWithApprovedPostgresSemantics() {
+        List<PartialUniqueIndexMetadata> indexes = jdbcTemplate.query(
+                """
+                SELECT index_definition.indisunique,
+                       access_method.amname AS access_method,
+                       index_definition.indnullsnotdistinct,
+                       index_definition.indnkeyatts,
+                       pg_get_indexdef(index_definition.indexrelid, 1, TRUE) AS first_key,
+                       pg_get_indexdef(index_definition.indexrelid, 2, TRUE) AS second_key,
+                       pg_get_indexdef(index_definition.indexrelid, 3, TRUE) AS third_key,
+                       pg_get_expr(index_definition.indpred, index_definition.indrelid) AS predicate
+                  FROM pg_index index_definition
+                  JOIN pg_class index_relation
+                    ON index_relation.oid = index_definition.indexrelid
+                  JOIN pg_class table_relation
+                    ON table_relation.oid = index_definition.indrelid
+                  JOIN pg_namespace table_schema
+                    ON table_schema.oid = table_relation.relnamespace
+                  JOIN pg_am access_method
+                    ON access_method.oid = index_relation.relam
+                 WHERE table_schema.nspname = 'public'
+                   AND table_relation.relname = 'lead_assignments'
+                   AND index_relation.relname = 'ux_lead_assignments_active_lead'
+                """,
+                (resultSet, rowNumber) -> new PartialUniqueIndexMetadata(
+                        resultSet.getBoolean("indisunique"),
+                        resultSet.getString("access_method"),
+                        resultSet.getBoolean("indnullsnotdistinct"),
+                        resultSet.getInt("indnkeyatts"),
+                        resultSet.getString("first_key"),
+                        resultSet.getString("second_key"),
+                        resultSet.getString("third_key"),
+                        resultSet.getString("predicate")));
+
+        assertThat(indexes).hasSize(1);
+        PartialUniqueIndexMetadata index = indexes.getFirst();
+        assertThat(index.unique()).isTrue();
+        assertThat(index.accessMethod()).isEqualTo("btree");
+        assertThat(index.nullsNotDistinct()).isFalse();
+        assertThat(index.keyCount()).isEqualTo(1);
+        assertThat(index.firstKey()).isEqualTo("lead_id");
+        assertThat(index.secondKey()).isEmpty();
+        assertThat(index.thirdKey()).isEmpty();
+        assertThat(index.predicate().replaceAll("[()\\s]", ""))
+                .isEqualTo("ended_atISNULL");
+
+        List<String> partialUniqueIndexes = jdbcTemplate.queryForList(
+                """
+                SELECT index_relation.relname
+                  FROM pg_index index_definition
+                  JOIN pg_class index_relation
+                    ON index_relation.oid = index_definition.indexrelid
+                  JOIN pg_class table_relation
+                    ON table_relation.oid = index_definition.indrelid
+                  JOIN pg_namespace table_schema
+                    ON table_schema.oid = table_relation.relnamespace
+                 WHERE table_schema.nspname = 'public'
+                   AND index_definition.indisunique
+                   AND index_definition.indpred IS NOT NULL
+                 ORDER BY index_relation.relname
+                """,
+                String.class);
+        assertThat(partialUniqueIndexes).containsExactly(
+                "ux_lead_assignments_active_lead",
+                "ux_lead_phones_primary_lead",
+                "ux_user_roles_current_assignment");
+    }
+
+    @Test
+    void rejectsASecondActiveAssignmentForTheSameLead() {
+        WorkflowFixture fixture = createWorkflowFixture();
+        try {
+            insertLeadAssignment(fixture.leadId(), fixture.firstUserId(), null);
+
+            assertSqlState(
+                    "23505",
+                    () -> insertLeadAssignment(fixture.leadId(), fixture.secondUserId(), null));
+
+            assertThat(countActiveAssignments(fixture.leadId())).isEqualTo(1);
+        } finally {
+            deleteWorkflowFixture(fixture);
+        }
+    }
+
+    @Test
+    void permitsAssignmentHistoryAndReplacingAnEndedActiveAssignment() {
+        WorkflowFixture fixture = createWorkflowFixture();
+        try {
+            insertLeadAssignment(
+                    fixture.leadId(), fixture.firstUserId(), "CURRENT_TIMESTAMP - INTERVAL '1 day'");
+            insertLeadAssignment(
+                    fixture.leadId(), fixture.secondUserId(), "CURRENT_TIMESTAMP - INTERVAL '2 days'");
+            insertLeadAssignment(fixture.leadId(), fixture.firstUserId(), null);
+            insertLeadAssignment(fixture.secondLeadId(), fixture.secondUserId(), null);
+
+            assertThat(countAssignments(fixture.leadId())).isEqualTo(3);
+            assertThat(countActiveAssignments(fixture.leadId())).isEqualTo(1);
+            assertThat(countActiveAssignments(fixture.secondLeadId())).isEqualTo(1);
+
+            jdbcTemplate.update(
+                    """
+                    UPDATE lead_assignments
+                       SET ended_at = CURRENT_TIMESTAMP
+                     WHERE lead_id = ? AND ended_at IS NULL
+                    """,
+                    fixture.leadId());
+            insertLeadAssignment(fixture.leadId(), fixture.secondUserId(), null);
+
+            assertThat(countAssignments(fixture.leadId())).isEqualTo(4);
+            assertThat(countActiveAssignments(fixture.leadId())).isEqualTo(1);
+        } finally {
+            deleteWorkflowFixture(fixture);
+        }
+    }
+
+    @Test
+    void enforcesDirectedDuplicatePairAndSelfLinkConstraints() {
+        WorkflowFixture fixture = createWorkflowFixture();
+        try {
+            insertLeadDuplicate(fixture.leadId(), fixture.secondLeadId());
+            assertSqlState(
+                    "23505",
+                    () -> insertLeadDuplicate(fixture.leadId(), fixture.secondLeadId()));
+            assertSqlState(
+                    "23514", () -> insertLeadDuplicate(fixture.leadId(), fixture.leadId()));
+
+            insertLeadDuplicate(fixture.secondLeadId(), fixture.leadId());
+            Integer pairCount = jdbcTemplate.queryForObject(
+                    """
+                    SELECT count(*)
+                      FROM lead_duplicates
+                     WHERE lead_id IN (?, ?) AND duplicate_of_lead_id IN (?, ?)
+                    """,
+                    Integer.class,
+                    fixture.leadId(),
+                    fixture.secondLeadId(),
+                    fixture.leadId(),
+                    fixture.secondLeadId());
+            assertThat(pairCount).isEqualTo(2);
+        } finally {
+            deleteWorkflowFixture(fixture);
+        }
+    }
+
+    @Test
+    void permitsCrossOrganizationDuplicateLinks() {
+        WorkflowFixture firstFixture = createWorkflowFixture();
+        WorkflowFixture secondFixture = createWorkflowFixture();
+        try {
+            insertLeadDuplicate(firstFixture.leadId(), secondFixture.leadId());
+
+            Integer pairCount = jdbcTemplate.queryForObject(
+                    """
+                    SELECT count(*) FROM lead_duplicates
+                     WHERE lead_id = ? AND duplicate_of_lead_id = ?
+                    """,
+                    Integer.class,
+                    firstFixture.leadId(),
+                    secondFixture.leadId());
+            assertThat(pairCount).isEqualTo(1);
+        } finally {
+            deleteWorkflowFixture(firstFixture);
+            deleteWorkflowFixture(secondFixture);
+        }
+    }
+
+    @Test
+    void permitsMultipleMutableStatusHistoryRows() {
+        WorkflowFixture fixture = createWorkflowFixture();
+        try {
+            UUID firstHistoryId = insertLeadStatusHistory(
+                    fixture.leadId(), null, fixture.statusId(), fixture.firstUserId());
+            insertLeadStatusHistory(
+                    fixture.leadId(),
+                    fixture.statusId(),
+                    fixture.statusId(),
+                    fixture.secondUserId());
+
+            jdbcTemplate.update(
+                    "UPDATE lead_status_history SET note = 'Updated generic note' WHERE id = ?",
+                    firstHistoryId);
+            String note = jdbcTemplate.queryForObject(
+                    "SELECT note FROM lead_status_history WHERE id = ?",
+                    String.class,
+                    firstHistoryId);
+            assertThat(note).isEqualTo("Updated generic note");
+            assertThat(countRowsForLead("lead_status_history", fixture.leadId())).isEqualTo(2);
+
+            jdbcTemplate.update("DELETE FROM lead_status_history WHERE id = ?", firstHistoryId);
+            assertThat(countRowsForLead("lead_status_history", fixture.leadId())).isEqualTo(1);
+        } finally {
+            deleteWorkflowFixture(fixture);
+        }
+    }
+
+    @Test
+    void permitsMultipleActivitiesEditableNotesAndEquivalentTasks() {
+        WorkflowFixture fixture = createWorkflowFixture();
+        try {
+            insertLeadActivity(fixture);
+            insertLeadActivity(fixture);
+            UUID noteId = insertLeadNote(fixture);
+            insertLeadNote(fixture);
+            insertLeadTask(fixture);
+            insertLeadTask(fixture);
+
+            jdbcTemplate.update(
+                    "UPDATE lead_notes SET note_text = 'Edited generic note' WHERE id = ?", noteId);
+            String noteText = jdbcTemplate.queryForObject(
+                    "SELECT note_text FROM lead_notes WHERE id = ?", String.class, noteId);
+            String metadataKind = jdbcTemplate.queryForObject(
+                    """
+                    SELECT sanitized_metadata ->> 'kind'
+                      FROM lead_activities
+                     WHERE lead_id = ?
+                     LIMIT 1
+                    """,
+                    String.class,
+                    fixture.leadId());
+
+            assertThat(noteText).isEqualTo("Edited generic note");
+            assertThat(metadataKind).isEqualTo("generic");
+            assertThat(countRowsForLead("lead_activities", fixture.leadId())).isEqualTo(2);
+            assertThat(countRowsForLead("lead_notes", fixture.leadId())).isEqualTo(2);
+            assertThat(countRowsForLead("lead_tasks", fixture.leadId())).isEqualTo(2);
+            Integer incompleteTasks = jdbcTemplate.queryForObject(
+                    "SELECT count(*) FROM lead_tasks WHERE lead_id = ? AND completed_at IS NULL",
+                    Integer.class,
+                    fixture.leadId());
+            assertThat(incompleteTasks).isEqualTo(2);
+        } finally {
+            deleteWorkflowFixture(fixture);
+        }
+    }
+
+    @Test
+    void permitsMultipleToursAndApplicationOwnedCrossScopeValues() {
+        WorkflowFixture firstFixture = createWorkflowFixture();
+        WorkflowFixture secondFixture = createWorkflowFixture();
+        try {
+            insertTour(
+                    firstFixture,
+                    firstFixture.branchId(),
+                    firstFixture.firstUserId(),
+                    null);
+            insertTour(
+                    firstFixture,
+                    firstFixture.branchId(),
+                    firstFixture.firstUserId(),
+                    null);
+            insertTour(
+                    firstFixture,
+                    secondFixture.branchId(),
+                    firstFixture.firstUserId(),
+                    secondFixture.outcomeId());
+
+            assertThat(countRowsForLead("tours", firstFixture.leadId())).isEqualTo(3);
+            Integer openTours = jdbcTemplate.queryForObject(
+                    """
+                    SELECT count(*) FROM tours
+                     WHERE lead_id = ? AND attended_at IS NULL AND outcome_id IS NULL
+                    """,
+                    Integer.class,
+                    firstFixture.leadId());
+            assertThat(openTours).isEqualTo(2);
+        } finally {
+            deleteWorkflowFixture(firstFixture);
+            deleteWorkflowFixture(secondFixture);
+        }
+    }
+
+    @Test
+    void rejectsSelectedCrmWorkflowForeignKeyViolations() {
+        WorkflowFixture fixture = createWorkflowFixture();
+        try {
+            assertSqlState(
+                    "23503",
+                    () -> insertLeadAssignment(
+                            UUID.randomUUID(), fixture.firstUserId(), null));
+            assertSqlState(
+                    "23503",
+                    () -> insertLeadStatusHistory(
+                            fixture.leadId(),
+                            null,
+                            UUID.randomUUID(),
+                            fixture.firstUserId()));
+            assertSqlState("23503", () -> insertLeadTask(fixture, UUID.randomUUID()));
+            assertSqlState(
+                    "23503",
+                    () -> insertTour(
+                            fixture,
+                            UUID.randomUUID(),
+                            fixture.firstUserId(),
+                            null));
+            assertSqlState(
+                    "23503",
+                    () -> insertLeadDuplicate(fixture.leadId(), UUID.randomUUID()));
+
+            assertThat(countAssignments(fixture.leadId())).isZero();
+        } finally {
+            deleteWorkflowFixture(fixture);
+        }
     }
 
     @Test
@@ -1656,6 +2201,252 @@ class DatabaseInfrastructureIntegrationTest {
         return new LeadFixture(organizationId, branchId, sourceId, statusId, leadId);
     }
 
+    private WorkflowFixture createWorkflowFixture() {
+        LeadFixture leadFixture = createLeadFixture();
+        UUID secondLeadId = UUID.randomUUID();
+        UUID firstUserId = UUID.randomUUID();
+        UUID secondUserId = UUID.randomUUID();
+        UUID activityTypeId = UUID.randomUUID();
+        UUID taskStatusId = UUID.randomUUID();
+        UUID outcomeId = UUID.randomUUID();
+
+        insertLead(
+                secondLeadId,
+                leadFixture.branchId(),
+                leadFixture.sourceId(),
+                leadFixture.statusId());
+        insertWorkflowUser(firstUserId, leadFixture.organizationId());
+        insertWorkflowUser(secondUserId, leadFixture.organizationId());
+        jdbcTemplate.update(
+                """
+                INSERT INTO lead_activity_types (id, code, name)
+                VALUES (?, ?, 'Generic integration activity')
+                """,
+                activityTypeId,
+                "ACTIVITY_" + activityTypeId);
+        jdbcTemplate.update(
+                """
+                INSERT INTO lead_task_statuses (id, code, name)
+                VALUES (?, ?, 'Generic integration task status')
+                """,
+                taskStatusId,
+                "TASK_" + taskStatusId);
+        jdbcTemplate.update(
+                """
+                INSERT INTO tour_outcomes (id, organization_id, code, name)
+                VALUES (?, ?, ?, 'Generic integration outcome')
+                """,
+                outcomeId,
+                leadFixture.organizationId(),
+                "OUTCOME_" + outcomeId);
+
+        return new WorkflowFixture(
+                leadFixture,
+                secondLeadId,
+                firstUserId,
+                secondUserId,
+                activityTypeId,
+                taskStatusId,
+                outcomeId);
+    }
+
+    private void insertWorkflowUser(UUID userId, UUID organizationId) {
+        jdbcTemplate.update(
+                """
+                INSERT INTO users (
+                    id, organization_id, username_normalized, display_name, status_id,
+                    created_at, updated_at)
+                VALUES (?, ?, ?, 'Generic integration user', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """,
+                userId,
+                organizationId,
+                "workflow_user_" + userId,
+                ACTIVE_STATUS_ID);
+    }
+
+    private void insertLeadAssignment(UUID leadId, UUID assignedUserId, String endedAtExpression) {
+        String validatedEndedAtExpression = switch (endedAtExpression) {
+            case null -> "NULL";
+            case "CURRENT_TIMESTAMP - INTERVAL '1 day'" -> endedAtExpression;
+            case "CURRENT_TIMESTAMP - INTERVAL '2 days'" -> endedAtExpression;
+            default -> throw new IllegalArgumentException("Unexpected ended_at expression");
+        };
+        jdbcTemplate.update(
+                """
+                INSERT INTO lead_assignments (
+                    id, lead_id, assigned_user_id, assigned_at, ended_at, assignment_reason)
+                VALUES (?, ?, ?, CURRENT_TIMESTAMP, %s, 'Generic assignment')
+                """
+                        .formatted(validatedEndedAtExpression),
+                UUID.randomUUID(),
+                leadId,
+                assignedUserId);
+    }
+
+    private int countAssignments(UUID leadId) {
+        return jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM lead_assignments WHERE lead_id = ?", Integer.class, leadId);
+    }
+
+    private int countActiveAssignments(UUID leadId) {
+        return jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM lead_assignments WHERE lead_id = ? AND ended_at IS NULL",
+                Integer.class,
+                leadId);
+    }
+
+    private void insertLeadDuplicate(UUID leadId, UUID duplicateOfLeadId) {
+        jdbcTemplate.update(
+                """
+                INSERT INTO lead_duplicates (id, lead_id, duplicate_of_lead_id, detected_at)
+                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                """,
+                UUID.randomUUID(),
+                leadId,
+                duplicateOfLeadId);
+    }
+
+    private UUID insertLeadStatusHistory(
+            UUID leadId, UUID fromStatusId, UUID toStatusId, UUID changedBy) {
+        UUID historyId = UUID.randomUUID();
+        jdbcTemplate.update(
+                """
+                INSERT INTO lead_status_history (
+                    id, lead_id, from_status_id, to_status_id, changed_by, changed_at, note)
+                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, 'Generic history note')
+                """,
+                historyId,
+                leadId,
+                fromStatusId,
+                toStatusId,
+                changedBy);
+        return historyId;
+    }
+
+    private void insertLeadActivity(WorkflowFixture fixture) {
+        jdbcTemplate.update(
+                """
+                INSERT INTO lead_activities (
+                    id, lead_id, activity_type_id, performed_by, occurred_at,
+                    summary, sanitized_metadata, created_at)
+                VALUES (
+                    ?, ?, ?, ?, CURRENT_TIMESTAMP,
+                    'Generic activity', CAST(? AS JSONB), CURRENT_TIMESTAMP)
+                """,
+                UUID.randomUUID(),
+                fixture.leadId(),
+                fixture.activityTypeId(),
+                fixture.firstUserId(),
+                "{\"kind\":\"generic\"}");
+    }
+
+    private UUID insertLeadNote(WorkflowFixture fixture) {
+        UUID noteId = UUID.randomUUID();
+        jdbcTemplate.update(
+                """
+                INSERT INTO lead_notes (
+                    id, lead_id, author_user_id, note_text, created_at, updated_at)
+                VALUES (?, ?, ?, 'Generic note', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """,
+                noteId,
+                fixture.leadId(),
+                fixture.firstUserId());
+        return noteId;
+    }
+
+    private void insertLeadTask(WorkflowFixture fixture) {
+        insertLeadTask(fixture, fixture.taskStatusId());
+    }
+
+    private void insertLeadTask(WorkflowFixture fixture, UUID taskStatusId) {
+        jdbcTemplate.update(
+                """
+                INSERT INTO lead_tasks (
+                    id, lead_id, assigned_to_user_id, status_id, title, due_at,
+                    created_by, created_at, updated_at)
+                VALUES (
+                    ?, ?, ?, ?, 'Generic task', TIMESTAMPTZ '2099-01-01 00:00:00+00',
+                    ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """,
+                UUID.randomUUID(),
+                fixture.leadId(),
+                fixture.firstUserId(),
+                taskStatusId,
+                fixture.firstUserId());
+    }
+
+    private void insertTour(
+            WorkflowFixture fixture, UUID branchId, UUID salesManagerUserId, UUID outcomeId) {
+        jdbcTemplate.update(
+                """
+                INSERT INTO tours (
+                    id, lead_id, branch_id, sales_manager_user_id, scheduled_at,
+                    outcome_id, created_at, updated_at)
+                VALUES (
+                    ?, ?, ?, ?, CURRENT_TIMESTAMP + INTERVAL '1 day',
+                    ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """,
+                UUID.randomUUID(),
+                fixture.leadId(),
+                branchId,
+                salesManagerUserId,
+                outcomeId);
+    }
+
+    private int countRowsForLead(String tableName, UUID leadId) {
+        String validatedTable = switch (tableName) {
+            case "lead_status_history", "lead_activities", "lead_notes", "lead_tasks", "tours" ->
+                tableName;
+            default -> throw new IllegalArgumentException("Unexpected workflow table: " + tableName);
+        };
+        return jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM " + validatedTable + " WHERE lead_id = ?",
+                Integer.class,
+                leadId);
+    }
+
+    private void deleteWorkflowFixture(WorkflowFixture fixture) {
+        UUID branchId = fixture.branchId();
+        jdbcTemplate.update(
+                """
+                DELETE FROM lead_duplicates
+                 WHERE lead_id IN (SELECT id FROM leads WHERE branch_id = ?)
+                    OR duplicate_of_lead_id IN (SELECT id FROM leads WHERE branch_id = ?)
+                """,
+                branchId,
+                branchId);
+        jdbcTemplate.update(
+                "DELETE FROM tours WHERE lead_id IN (SELECT id FROM leads WHERE branch_id = ?)",
+                branchId);
+        jdbcTemplate.update(
+                "DELETE FROM lead_tasks WHERE lead_id IN (SELECT id FROM leads WHERE branch_id = ?)",
+                branchId);
+        jdbcTemplate.update(
+                "DELETE FROM lead_notes WHERE lead_id IN (SELECT id FROM leads WHERE branch_id = ?)",
+                branchId);
+        jdbcTemplate.update(
+                "DELETE FROM lead_activities WHERE lead_id IN (SELECT id FROM leads WHERE branch_id = ?)",
+                branchId);
+        jdbcTemplate.update(
+                """
+                DELETE FROM lead_status_history
+                 WHERE lead_id IN (SELECT id FROM leads WHERE branch_id = ?)
+                """,
+                branchId);
+        jdbcTemplate.update(
+                """
+                DELETE FROM lead_assignments
+                 WHERE lead_id IN (SELECT id FROM leads WHERE branch_id = ?)
+                """,
+                branchId);
+        jdbcTemplate.update("DELETE FROM tour_outcomes WHERE id = ?", fixture.outcomeId());
+        jdbcTemplate.update("DELETE FROM lead_activity_types WHERE id = ?", fixture.activityTypeId());
+        jdbcTemplate.update("DELETE FROM lead_task_statuses WHERE id = ?", fixture.taskStatusId());
+        jdbcTemplate.update(
+                "DELETE FROM users WHERE id IN (?, ?)", fixture.firstUserId(), fixture.secondUserId());
+        deleteLeadFixture(fixture.leadFixture());
+    }
+
     private void insertLead(UUID leadId, UUID branchId, UUID sourceId, UUID statusId) {
         jdbcTemplate.update(
                 """
@@ -1867,6 +2658,202 @@ class DatabaseInfrastructureIntegrationTest {
         Throwable mostSpecificCause = exception.getMostSpecificCause();
         assertThat(mostSpecificCause).isInstanceOf(SQLException.class);
         assertThat(((SQLException) mostSpecificCause).getSQLState()).isEqualTo(expectedSqlState);
+    }
+
+    private List<ColumnMetadata> expectedCrmWorkflowColumns() {
+        return """
+                lead_assignments|id|uuid||false|
+                lead_assignments|lead_id|uuid||false|
+                lead_assignments|assigned_user_id|uuid||false|
+                lead_assignments|assigned_by|uuid||true|
+                lead_assignments|assigned_at|timestamp with time zone||false|
+                lead_assignments|ended_at|timestamp with time zone||true|
+                lead_assignments|assignment_reason|text||true|
+                lead_status_history|id|uuid||false|
+                lead_status_history|lead_id|uuid||false|
+                lead_status_history|from_status_id|uuid||true|
+                lead_status_history|to_status_id|uuid||false|
+                lead_status_history|changed_by|uuid||false|
+                lead_status_history|changed_at|timestamp with time zone||false|
+                lead_status_history|note|text||true|
+                lead_activities|id|uuid||false|
+                lead_activities|lead_id|uuid||false|
+                lead_activities|activity_type_id|uuid||false|
+                lead_activities|performed_by|uuid||true|
+                lead_activities|occurred_at|timestamp with time zone||false|
+                lead_activities|summary|text||false|
+                lead_activities|sanitized_metadata|jsonb||true|
+                lead_activities|created_at|timestamp with time zone||false|
+                lead_notes|id|uuid||false|
+                lead_notes|lead_id|uuid||false|
+                lead_notes|author_user_id|uuid||false|
+                lead_notes|note_text|text||false|
+                lead_notes|created_at|timestamp with time zone||false|
+                lead_notes|updated_at|timestamp with time zone||false|
+                lead_tasks|id|uuid||false|
+                lead_tasks|lead_id|uuid||false|
+                lead_tasks|assigned_to_user_id|uuid||false|
+                lead_tasks|status_id|uuid||false|
+                lead_tasks|title|character varying|255|false|
+                lead_tasks|description|text||true|
+                lead_tasks|due_at|timestamp with time zone||false|
+                lead_tasks|completed_at|timestamp with time zone||true|
+                lead_tasks|created_by|uuid||false|
+                lead_tasks|created_at|timestamp with time zone||false|
+                lead_tasks|updated_at|timestamp with time zone||false|
+                tours|id|uuid||false|
+                tours|lead_id|uuid||false|
+                tours|branch_id|uuid||false|
+                tours|sales_manager_user_id|uuid||false|
+                tours|scheduled_at|timestamp with time zone||false|
+                tours|attended_at|timestamp with time zone||true|
+                tours|outcome_id|uuid||true|
+                tours|notes|text||true|
+                tours|created_at|timestamp with time zone||false|
+                tours|updated_at|timestamp with time zone||false|
+                lead_duplicates|id|uuid||false|
+                lead_duplicates|lead_id|uuid||false|
+                lead_duplicates|duplicate_of_lead_id|uuid||false|
+                lead_duplicates|detected_by_user_id|uuid||true|
+                lead_duplicates|detected_at|timestamp with time zone||false|
+                lead_duplicates|reason|text||true|
+                lead_duplicates|resolved_at|timestamp with time zone||true|
+                lead_duplicates|resolved_by_user_id|uuid||true|
+                """
+                .lines()
+                .map(String::strip)
+                .filter(line -> !line.isEmpty())
+                .map(line -> {
+                    String[] fields = line.split("\\|", -1);
+                    Integer length = fields[3].isEmpty() ? null : Integer.valueOf(fields[3]);
+                    String defaultValue = fields[5].isEmpty() ? null : fields[5];
+                    return new ColumnMetadata(
+                            fields[0],
+                            fields[1],
+                            fields[2],
+                            length,
+                            Boolean.parseBoolean(fields[4]),
+                            defaultValue);
+                })
+                .toList();
+    }
+
+    private List<KeyMetadata> expectedCrmWorkflowKeys() {
+        return List.of(
+                key("lead_assignments", "PRIMARY KEY", "id", false),
+                key("lead_status_history", "PRIMARY KEY", "id", false),
+                key("lead_activities", "PRIMARY KEY", "id", false),
+                key("lead_notes", "PRIMARY KEY", "id", false),
+                key("lead_tasks", "PRIMARY KEY", "id", false),
+                key("tours", "PRIMARY KEY", "id", false),
+                key("lead_duplicates", "PRIMARY KEY", "id", false),
+                key("lead_duplicates", "UNIQUE", "lead_id,duplicate_of_lead_id", false));
+    }
+
+    private List<IndexMetadata> expectedCrmWorkflowIndexes() {
+        return List.of(
+                index("lead_assignments", "idx_lead_assignments_lead_id", false, "lead_id"),
+                index(
+                        "lead_assignments",
+                        "idx_lead_assignments_assigned_user_id",
+                        false,
+                        "assigned_user_id"),
+                index(
+                        "lead_assignments", "idx_lead_assignments_assigned_by", false, "assigned_by"),
+                index(
+                        "lead_assignments",
+                        "idx_lead_assignments_lead_ended_at",
+                        false,
+                        "lead_id,ended_at"),
+                partialIndex(
+                        "lead_assignments",
+                        "ux_lead_assignments_active_lead",
+                        true,
+                        "lead_id"),
+                index(
+                        "lead_status_history",
+                        "idx_lead_status_history_lead_id",
+                        false,
+                        "lead_id"),
+                index(
+                        "lead_status_history",
+                        "idx_lead_status_history_from_status_id",
+                        false,
+                        "from_status_id"),
+                index(
+                        "lead_status_history",
+                        "idx_lead_status_history_to_status_id",
+                        false,
+                        "to_status_id"),
+                index(
+                        "lead_status_history",
+                        "idx_lead_status_history_changed_by",
+                        false,
+                        "changed_by"),
+                index(
+                        "lead_status_history",
+                        "idx_lead_status_history_changed_at",
+                        false,
+                        "changed_at"),
+                index("lead_activities", "idx_lead_activities_lead_id", false, "lead_id"),
+                index(
+                        "lead_activities",
+                        "idx_lead_activities_activity_type_id",
+                        false,
+                        "activity_type_id"),
+                index(
+                        "lead_activities",
+                        "idx_lead_activities_performed_by",
+                        false,
+                        "performed_by"),
+                index(
+                        "lead_activities", "idx_lead_activities_occurred_at", false, "occurred_at"),
+                index("lead_notes", "idx_lead_notes_lead_id", false, "lead_id"),
+                index(
+                        "lead_notes", "idx_lead_notes_author_user_id", false, "author_user_id"),
+                index("lead_tasks", "idx_lead_tasks_lead_id", false, "lead_id"),
+                index(
+                        "lead_tasks",
+                        "idx_lead_tasks_assigned_to_user_id",
+                        false,
+                        "assigned_to_user_id"),
+                index("lead_tasks", "idx_lead_tasks_status_id", false, "status_id"),
+                index("lead_tasks", "idx_lead_tasks_created_by", false, "created_by"),
+                index("lead_tasks", "idx_lead_tasks_due_at", false, "due_at"),
+                index(
+                        "lead_tasks",
+                        "idx_lead_tasks_assignee_status_due",
+                        false,
+                        "assigned_to_user_id,status_id,due_at"),
+                index("tours", "idx_tours_lead_id", false, "lead_id"),
+                index("tours", "idx_tours_branch_id", false, "branch_id"),
+                index(
+                        "tours",
+                        "idx_tours_sales_manager_user_id",
+                        false,
+                        "sales_manager_user_id"),
+                index("tours", "idx_tours_outcome_id", false, "outcome_id"),
+                index("tours", "idx_tours_scheduled_at", false, "scheduled_at"),
+                index(
+                        "lead_duplicates",
+                        "uk_lead_duplicates_directed_pair",
+                        true,
+                        "lead_id,duplicate_of_lead_id"),
+                index(
+                        "lead_duplicates",
+                        "idx_lead_duplicates_duplicate_of_lead_id",
+                        false,
+                        "duplicate_of_lead_id"),
+                index(
+                        "lead_duplicates",
+                        "idx_lead_duplicates_detected_by_user_id",
+                        false,
+                        "detected_by_user_id"),
+                index(
+                        "lead_duplicates",
+                        "idx_lead_duplicates_resolved_by_user_id",
+                        false,
+                        "resolved_by_user_id"));
     }
 
     private List<ColumnMetadata> expectedCrmLeadCoreColumns() {
@@ -2343,7 +3330,32 @@ class DatabaseInfrastructureIntegrationTest {
                 restrictedForeignKey("lead_phones", "lead_id", "leads"),
                 restrictedForeignKey("prospective_children", "lead_id", "leads"),
                 restrictedForeignKey(
-                        "prospective_children", "preferred_language_id", "languages"));
+                        "prospective_children", "preferred_language_id", "languages"),
+                restrictedForeignKey("lead_assignments", "lead_id", "leads"),
+                restrictedForeignKey("lead_assignments", "assigned_user_id", "users"),
+                restrictedForeignKey("lead_assignments", "assigned_by", "users"),
+                restrictedForeignKey("lead_status_history", "lead_id", "leads"),
+                restrictedForeignKey("lead_status_history", "from_status_id", "lead_statuses"),
+                restrictedForeignKey("lead_status_history", "to_status_id", "lead_statuses"),
+                restrictedForeignKey("lead_status_history", "changed_by", "users"),
+                restrictedForeignKey("lead_activities", "lead_id", "leads"),
+                restrictedForeignKey(
+                        "lead_activities", "activity_type_id", "lead_activity_types"),
+                restrictedForeignKey("lead_activities", "performed_by", "users"),
+                restrictedForeignKey("lead_notes", "lead_id", "leads"),
+                restrictedForeignKey("lead_notes", "author_user_id", "users"),
+                restrictedForeignKey("lead_tasks", "lead_id", "leads"),
+                restrictedForeignKey("lead_tasks", "assigned_to_user_id", "users"),
+                restrictedForeignKey("lead_tasks", "status_id", "lead_task_statuses"),
+                restrictedForeignKey("lead_tasks", "created_by", "users"),
+                restrictedForeignKey("tours", "lead_id", "leads"),
+                restrictedForeignKey("tours", "branch_id", "branches"),
+                restrictedForeignKey("tours", "sales_manager_user_id", "users"),
+                restrictedForeignKey("tours", "outcome_id", "tour_outcomes"),
+                restrictedForeignKey("lead_duplicates", "lead_id", "leads"),
+                restrictedForeignKey("lead_duplicates", "duplicate_of_lead_id", "leads"),
+                restrictedForeignKey("lead_duplicates", "detected_by_user_id", "users"),
+                restrictedForeignKey("lead_duplicates", "resolved_by_user_id", "users"));
     }
 
     private ForeignKeyMetadata restrictedForeignKey(
@@ -2423,4 +3435,26 @@ class DatabaseInfrastructureIntegrationTest {
 
     private record LeadFixture(
             UUID organizationId, UUID branchId, UUID sourceId, UUID statusId, UUID leadId) {}
+
+    private record WorkflowFixture(
+            LeadFixture leadFixture,
+            UUID secondLeadId,
+            UUID firstUserId,
+            UUID secondUserId,
+            UUID activityTypeId,
+            UUID taskStatusId,
+            UUID outcomeId) {
+
+        private UUID branchId() {
+            return leadFixture.branchId();
+        }
+
+        private UUID leadId() {
+            return leadFixture.leadId();
+        }
+
+        private UUID statusId() {
+            return leadFixture.statusId();
+        }
+    }
 }
