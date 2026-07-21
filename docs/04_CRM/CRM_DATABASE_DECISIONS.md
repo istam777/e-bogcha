@@ -9,7 +9,7 @@ Decision ID: DB-001C-02A-DECISIONS
 2. `docs/03_Database/DB-001A_architecture_decisions.md` is authoritative for previously approved implementation semantics.
 3. This document records CRM-specific implementation decisions and the explicit self-duplicate architecture amendment.
 4. `CRM_WORKFLOW_SPECIFICATION.md` defines application workflow behavior.
-5. `CRM_REFERENCE_DATA_PROPOSAL.md` remains a proposal until its tuples are explicitly approved.
+5. `CRM_REFERENCE_DATA_PROPOSAL.md` is authoritative for the approved V12 global reference tuple matrix.
 
 No decision in this document creates Admissions, Finance, ERP, or other out-of-scope objects.
 
@@ -160,3 +160,35 @@ DB-001C-02 does not approve:
 - cross-table consistency triggers;
 - cascading FKs; or
 - a Flyway version for `lead_conversions`.
+
+## 9. Global reference seed identity and replay policy
+
+Decision ID: DB-001C-02B-06A
+Status: Approved
+
+### Decision
+
+- The 28 tuples in `CRM_REFERENCE_DATA_PROPOSAL.md` are approved exactly as documented.
+- V12 is authorized as a data-only Flyway versioned migration.
+- V12 uses the approved fixed UUIDs; each UUID/code pair is an immutable release identity.
+- V12 uses strict plain `INSERT` statements.
+- `ON CONFLICT`, `MERGE`, conditional inserts, delete-then-insert behavior, and updates of existing reference identities are prohibited.
+- An existing conflicting UUID or globally unique code causes visible migration failure.
+- V12 does not update, delete, ignore, merge, or replace existing rows.
+- Later display-name, flag, or identity changes require a new explicitly approved versioned migration.
+- Organization-owned reference data remains unseeded.
+
+### Rationale
+
+- Deterministic reference identities produce consistent environments.
+- Visible migration failures expose schema and reference-data drift.
+- Strict inserts prevent silent identity corruption.
+- Stable UUIDs provide durable foreign-key identities.
+- Later versioned migrations provide an auditable evolution history through Flyway.
+
+### Consequences
+
+- Clean installations receive exactly the 28 approved global tuples.
+- Environments containing conflicting identities fail while applying V12.
+- Operators must resolve unexpected drift rather than bypassing it.
+- Display-name or approved-flag changes require later versioned migrations.

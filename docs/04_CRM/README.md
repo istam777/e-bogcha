@@ -2,9 +2,9 @@
 
 ## Purpose
 
-This folder contains the CRM workflow, PostgreSQL implementation decisions, and proposed global CRM/telephony reference data for E-Bog'cha DB-001C-02.
+This folder contains the CRM workflow, PostgreSQL implementation decisions, and approved global CRM/telephony reference data for E-Bog'cha DB-001C-02.
 
-It documents the approved implementation boundary and behavior. It does not claim that V7-V12 SQL migrations or CRM application services have been implemented.
+It documents the approved implementation boundary and behavior. At this documentation stage, it does not claim that the V12 SQL migration or CRM application services have been implemented or committed.
 
 ## Authoritative document order
 
@@ -12,11 +12,11 @@ It documents the approved implementation boundary and behavior. It does not clai
 2. The DB-001A architecture decisions remain authoritative for platform-wide database semantics.
 3. [CRM Database Decisions](CRM_DATABASE_DECISIONS.md) records DB-001C-02 database implementation decisions and its explicit architecture amendment.
 4. [CRM Workflow Specification](CRM_WORKFLOW_SPECIFICATION.md) defines application workflow behavior.
-5. [CRM Reference Data Proposal](CRM_REFERENCE_DATA_PROPOSAL.md) proposes global seed tuples and remains subject to explicit approval.
+5. [CRM Reference Data Proposal](CRM_REFERENCE_DATA_PROPOSAL.md) is the authoritative matrix for the 28 approved V12 global seed tuples.
 
 ## Current decision status
 
-The CRM workflow and database decisions needed to plan V7-V11 are documented for review. Global reference tuples are ready for approval; they are not yet approved seed data.
+The 28 global reference tuples are approved exactly as recorded in `CRM_REFERENCE_DATA_PROPOSAL.md`, and V12 is authorized for implementation as a data-only Flyway migration. Its replay policy is strict plain `INSERT`: conflicts fail visibly, and no `ON CONFLICT`, merge, update, delete, or replacement behavior is permitted. Organization-scoped CRM references remain unseeded. V12 has not yet been implemented or committed at this documentation stage.
 
 ## Planned migration sequence
 
@@ -28,12 +28,12 @@ The CRM workflow and database decisions needed to plan V7-V11 are documented for
 | `V10__create_telephony_configuration_schema.sql` | PBX configuration and telephony references | 8 |
 | `V11__create_telephony_call_schema.sql` | Calls, events, recordings, lead links, webhooks | 6 |
 
-V7-V11 contain exactly 30 CRM/telephony tables. V12 is reserved for approved global reference seeds and must not contain organization-owned data.
+V7-V11 contain exactly 30 CRM/telephony tables. V12 is authorized to insert only the 28 approved global reference tuples and must not contain organization-owned data.
 
 ## Deferred items
 
 - `lead_conversions` is deferred to an unversioned CRM/Admissions boundary migration after `children` and `admission_applications` exist.
 - Organization-owned CRM reference rows require an organization-bootstrap specification.
-- V12 requires explicit approval of the proposed 28 global tuples.
+- V12 implementation remains pending; its 28 tuples and strict replay policy are approved.
 - Recording retention/deletion belongs to the later storage and security implementation phase.
 - CRM services and their service-level integration tests are outside this documentation-only task.

@@ -1,17 +1,17 @@
-# CRM and Telephony Reference Data Proposal
+# Approved CRM and Telephony Reference Data
 
-Status: READY FOR APPROVAL
-Scope: Proposed global rows for the future reserved V12 migration
+Status: APPROVED FOR V12 IMPLEMENTATION
+Scope: Approved global rows for the authorized V12 migration
 
-## 1. Proposal rules
+## 1. Approval and authority
 
-This document proposes exactly the global codes approved by DB-001A. It does not insert data and does not authorize V12.
+This document defines the exact global reference tuples approved for V12. The exact 28 tuples in this document are authorized for insertion by the V12 Flyway migration.
 
-The 28 proposed identifiers are deterministic, structurally valid UUIDv4 values. They were derived from the stable input `e-bogcha:crm-reference:<table>:<code>` using SHA-256, taking the first 128 bits and setting the RFC 4122 version to 4 and variant bits to `10`. Once approved and released, each UUID and code is immutable.
+The 28 approved identifiers are deterministic, structurally valid UUIDv4 values. They were derived from the stable input `e-bogcha:crm-reference:<table>:<code>` using SHA-256, taking the first 128 bits and setting the RFC 4122 version to 4 and variant bits to `10`. Each approved UUID and code is an immutable release identity.
 
-Canonical names are concise English system labels. Every table below has a proposed value for every required field and is marked **READY FOR APPROVAL**, not approved.
+Canonical names are concise English system labels. Every table below contains the approved value for every required field.
 
-## 2. `lead_task_statuses` — READY FOR APPROVAL
+## 2. `lead_task_statuses` — APPROVED
 
 | UUID | Code | Name | `is_closed` | `is_active` | Rationale |
 |---|---|---|---:|---:|---|
@@ -20,7 +20,7 @@ Canonical names are concise English system labels. Every table below has a propo
 | `396c77c7-c5d3-4e56-9f9a-b64019872b91` | `COMPLETED` | Completed | true | true | Terminal successful task state. |
 | `e8d7cdc6-6e26-4d7b-b995-f80a46d148eb` | `CANCELLED` | Cancelled | true | true | Terminal cancelled task state. |
 
-## 3. `lead_activity_types` — READY FOR APPROVAL
+## 3. `lead_activity_types` — APPROVED
 
 | UUID | Code | Name | `is_active` | Rationale |
 |---|---|---|---:|---|
@@ -31,14 +31,14 @@ Canonical names are concise English system labels. Every table below has a propo
 | `9928bbba-0aba-4205-b9de-6fef84ff5865` | `TOUR` | Tour | true | Tour scheduling or tour-related activity. |
 | `5a8ad0a2-8683-489f-b71f-788887c65744` | `SYSTEM` | System | true | System-originated timeline activity. |
 
-## 4. `call_directions` — READY FOR APPROVAL
+## 4. `call_directions` — APPROVED
 
 | UUID | Code | Name | Rationale |
 |---|---|---|---|
 | `12cdc1a3-4e6a-4f6d-a825-ff8bc5fa9391` | `INBOUND` | Inbound | Call received by the PBX. |
 | `440c2104-1afc-4d3d-bf60-f25f3609e8ba` | `OUTBOUND` | Outbound | Call initiated through the PBX. |
 
-## 5. `call_dispositions` — READY FOR APPROVAL
+## 5. `call_dispositions` — APPROVED
 
 | UUID | Code | Name | `is_missed` | Rationale |
 |---|---|---|---:|---|
@@ -51,7 +51,7 @@ Canonical names are concise English system labels. Every table below has a propo
 
 The `is_missed` flag identifies only the explicit `MISSED` disposition. Other dispositions such as `NO_ANSWER`, `BUSY`, `REJECTED`, and `FAILED` may occur in either inbound or outbound calls and therefore remain globally false. Reporting an inbound missed call must combine call direction and disposition in the application or query layer.
 
-## 6. `call_event_types` — READY FOR APPROVAL
+## 6. `call_event_types` — APPROVED
 
 | UUID | Code | Name | Rationale |
 |---|---|---|---|
@@ -61,7 +61,7 @@ The `is_missed` flag identifies only the explicit `MISSED` disposition. Other di
 | `23d85d99-98db-4ff4-8fee-96573bb36579` | `ENDED` | Ended | Call session ended. |
 | `0123d4ef-f3a3-4efc-8d76-cfea8c345830` | `RECORDING_AVAILABLE` | Recording Available | Recording metadata became available. |
 
-## 7. `webhook_statuses` — READY FOR APPROVAL
+## 7. `webhook_statuses` — APPROVED
 
 | UUID | Code | Name | `is_final` | Rationale |
 |---|---|---|---:|---|
@@ -82,11 +82,43 @@ The following are created only during organization bootstrap after an organizati
 
 These rows must not be globally seeded. This proposal contains no organization UUID, credential, endpoint, phone number, personal data, or environment-specific value.
 
-## 9. Approval checklist
+## 9. V12 authorization and scope boundary
 
-- Approve all 28 UUID/code/name tuples.
-- Approve task `is_closed` values.
-- Approve all `is_active = true` values.
-- Confirm that the approved `call_dispositions.is_missed` mapping is documented and validated.
-- Approve `webhook_statuses.is_final` values.
-- Only after approval may V12 be authored and reviewed.
+V12 is authorized to insert these exact 28 tuples only into:
+
+- `lead_task_statuses`;
+- `lead_activity_types`;
+- `call_directions`;
+- `call_dispositions`;
+- `call_event_types`; and
+- `webhook_statuses`.
+
+V12 must not insert organization-owned, branch-owned, runtime, business, PBX, lead, call-session, user, or personal data. The organization-owned references listed in Section 8 remain unseeded.
+
+## 10. Immutable identity policy
+
+- Each fixed UUID and code forms an immutable identity pair.
+- V12 must use every UUID/code mapping exactly as documented in this file.
+- Generated UUIDs and code substitutions are prohibited.
+- V12 must not change a fixed UUID or code.
+- Any future identity change requires a separate explicitly approved versioned migration.
+- Display names and approved flags may change only through a later explicitly approved versioned migration.
+
+## 11. Strict replay and conflict policy
+
+- V12 uses ordinary strict `INSERT` statements.
+- `ON CONFLICT`, `MERGE`, conditional inserts, delete-then-insert behavior, and updates of existing reference identities are prohibited.
+- Existing rows are not updated, ignored, merged, deleted, or replaced by V12.
+- A conflicting UUID or globally unique code is reference-data drift and must fail the migration visibly.
+- Flyway applies the versioned V12 migration exactly once.
+- Operators must resolve unexpected drift rather than bypassing or suppressing the conflict.
+- Future tuple changes use a later explicitly approved versioned migration.
+
+## 12. Approval record
+
+- All 28 UUID/code/name tuples are approved exactly as documented.
+- All task `is_closed` values are approved.
+- All `is_active = true` values are approved.
+- The `call_dispositions.is_missed` mapping is approved as documented.
+- All `webhook_statuses.is_final` values are approved.
+- V12 implementation is authorized subject to the immutable identity, strict replay, and scope policies above.
