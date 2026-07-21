@@ -53,14 +53,14 @@ class DatabaseInfrastructureIntegrationTest {
     private ApplicationContext applicationContext;
 
     @Test
-    void appliesOnlyTheApprovedFoundationSchema() {
+    void appliesOnlyTheApprovedCoreAndFoundationSchemas() {
         Integer connectivityCheck = jdbcTemplate.queryForObject("SELECT 1", Integer.class);
         assertThat(connectivityCheck).isEqualTo(1);
 
         assertThat(flyway.info().pending()).isEmpty();
         assertThat(flyway.info().applied())
                 .extracting(migration -> migration.getVersion().getVersion())
-                .containsExactly("1", "2", "3");
+                .containsExactly("1", "2", "3", "4", "5", "6");
 
         List<String> foundationTables = jdbcTemplate.queryForList(
                 """
@@ -74,12 +74,27 @@ class DatabaseInfrastructureIntegrationTest {
                 String.class);
 
         assertThat(foundationTables).containsExactly(
+                "application_settings",
                 "audit_logs",
                 "branches",
+                "departments",
+                "document_types",
+                "document_verification_statuses",
+                "employees",
+                "gender_types",
+                "languages",
+                "nationalities",
+                "number_sequences",
                 "organizations",
                 "permissions",
+                "positions",
+                "refresh_tokens",
+                "relationship_types",
                 "role_permissions",
                 "roles",
+                "stored_files",
+                "user_branch_access",
+                "user_credentials",
                 "user_roles",
                 "user_statuses",
                 "users");
@@ -95,6 +110,18 @@ class DatabaseInfrastructureIntegrationTest {
                 new UserStatusSeed(UUID.fromString("e199ab44-e328-4d72-84ad-807213345872"), "INACTIVE"),
                 new UserStatusSeed(UUID.fromString("c41bcf72-f77b-4a26-b331-1a37b22c2166"), "LOCKED"),
                 new UserStatusSeed(UUID.fromString("1f46311c-31cc-4f72-a542-075fad28373a"), "SUSPENDED"));
+
+        Integer unseededReferenceRowCount = jdbcTemplate.queryForObject(
+                """
+                SELECT (SELECT count(*) FROM languages)
+                     + (SELECT count(*) FROM nationalities)
+                     + (SELECT count(*) FROM gender_types)
+                     + (SELECT count(*) FROM relationship_types)
+                     + (SELECT count(*) FROM document_types)
+                     + (SELECT count(*) FROM document_verification_statuses)
+                """,
+                Integer.class);
+        assertThat(unseededReferenceRowCount).isZero();
 
         assertThat(applicationContext.containsBean("entityManagerFactory")).isFalse();
     }
@@ -143,7 +170,12 @@ class DatabaseInfrastructureIntegrationTest {
                    AND source_schema.nspname = 'public'
                    AND source_table.relname IN (
                        'organizations', 'branches', 'user_statuses', 'users', 'roles',
-                       'permissions', 'role_permissions', 'user_roles', 'audit_logs')
+                       'permissions', 'role_permissions', 'user_roles', 'audit_logs',
+                       'departments', 'positions', 'user_credentials', 'employees',
+                       'user_branch_access', 'refresh_tokens', 'languages', 'nationalities',
+                       'gender_types', 'relationship_types', 'document_types',
+                       'document_verification_statuses', 'stored_files',
+                       'application_settings', 'number_sequences')
                 """,
                 (resultSet, rowNumber) -> new ForeignKeyMetadata(
                         resultSet.getString("source_table"),
@@ -191,7 +223,12 @@ class DatabaseInfrastructureIntegrationTest {
                    AND source_schema.nspname = 'public'
                    AND source_table.relname IN (
                        'organizations', 'branches', 'user_statuses', 'users', 'roles',
-                       'permissions', 'role_permissions', 'user_roles', 'audit_logs')
+                       'permissions', 'role_permissions', 'user_roles', 'audit_logs',
+                       'departments', 'positions', 'user_credentials', 'employees',
+                       'user_branch_access', 'refresh_tokens', 'languages', 'nationalities',
+                       'gender_types', 'relationship_types', 'document_types',
+                       'document_verification_statuses', 'stored_files',
+                       'application_settings', 'number_sequences')
                 """,
                 (resultSet, rowNumber) -> new ForeignKeyIndexCoverage(
                         resultSet.getString("source_table"),
@@ -204,6 +241,121 @@ class DatabaseInfrastructureIntegrationTest {
                 .toList();
 
         assertThat(actualCoverage).containsExactlyInAnyOrderElementsOf(expectedCoverage);
+    }
+
+    @Test
+    void definesExactRemainingCoreColumnMetadata() {
+        List<ColumnMetadata> actualColumns = jdbcTemplate.query(
+                """
+                SELECT table_name,
+                       column_name,
+                       data_type,
+                       character_maximum_length,
+                       is_nullable,
+                       column_default
+                  FROM information_schema.columns
+                 WHERE table_schema = 'public'
+                   AND table_name IN (
+                       'departments', 'positions', 'user_credentials', 'employees',
+                       'user_branch_access', 'refresh_tokens', 'languages', 'nationalities',
+                       'gender_types', 'relationship_types', 'document_types',
+                       'document_verification_statuses', 'stored_files',
+                       'application_settings', 'number_sequences')
+                """,
+                (resultSet, rowNumber) -> new ColumnMetadata(
+                        resultSet.getString("table_name"),
+                        resultSet.getString("column_name"),
+                        resultSet.getString("data_type"),
+                        resultSet.getObject("character_maximum_length", Integer.class),
+                        resultSet.getString("is_nullable").equals("YES"),
+                        resultSet.getString("column_default")));
+
+        assertThat(actualColumns).containsExactlyInAnyOrderElementsOf(expectedRemainingColumns());
+    }
+
+    @Test
+    void definesExactRemainingCorePrimaryAndUniqueKeys() {
+        List<KeyMetadata> actualKeys = jdbcTemplate.query(
+                """
+                SELECT table_relation.relname AS table_name,
+                       CASE constraint_definition.contype
+                           WHEN 'p' THEN 'PRIMARY KEY'
+                           WHEN 'u' THEN 'UNIQUE'
+                       END AS key_type,
+                       string_agg(attribute.attname, ',' ORDER BY key_column.ordinal_position)
+                           AS key_columns,
+                       index_definition.indnullsnotdistinct,
+                       access_method.amname AS access_method
+                  FROM pg_constraint constraint_definition
+                  JOIN pg_class table_relation
+                    ON table_relation.oid = constraint_definition.conrelid
+                  JOIN pg_namespace table_schema
+                    ON table_schema.oid = table_relation.relnamespace
+                  JOIN pg_index index_definition
+                    ON index_definition.indexrelid = constraint_definition.conindid
+                  JOIN pg_class index_relation
+                    ON index_relation.oid = index_definition.indexrelid
+                  JOIN pg_am access_method
+                    ON access_method.oid = index_relation.relam
+                  JOIN LATERAL unnest(constraint_definition.conkey) WITH ORDINALITY
+                       AS key_column(attribute_number, ordinal_position) ON TRUE
+                  JOIN pg_attribute attribute
+                    ON attribute.attrelid = table_relation.oid
+                   AND attribute.attnum = key_column.attribute_number
+                 WHERE table_schema.nspname = 'public'
+                   AND constraint_definition.contype IN ('p', 'u')
+                   AND table_relation.relname IN (
+                       'departments', 'positions', 'user_credentials', 'employees',
+                       'user_branch_access', 'refresh_tokens', 'languages', 'nationalities',
+                       'gender_types', 'relationship_types', 'document_types',
+                       'document_verification_statuses', 'stored_files',
+                       'application_settings', 'number_sequences')
+                 GROUP BY table_relation.relname,
+                          constraint_definition.oid,
+                          constraint_definition.contype,
+                          index_definition.indnullsnotdistinct,
+                          access_method.amname
+                """,
+                (resultSet, rowNumber) -> new KeyMetadata(
+                        resultSet.getString("table_name"),
+                        resultSet.getString("key_type"),
+                        resultSet.getString("key_columns"),
+                        resultSet.getBoolean("indnullsnotdistinct"),
+                        resultSet.getString("access_method")));
+
+        assertThat(actualKeys).containsExactlyInAnyOrderElementsOf(expectedRemainingKeys());
+    }
+
+    @Test
+    void hasExactCumulativeConstraintCounts() {
+        ConstraintCounts constraintCounts = jdbcTemplate.queryForObject(
+                """
+                SELECT count(*) FILTER (WHERE constraint_definition.contype = 'p') AS primary_keys,
+                       count(*) FILTER (WHERE constraint_definition.contype = 'u') AS unique_constraints,
+                       count(*) FILTER (WHERE constraint_definition.contype = 'f') AS foreign_keys,
+                       count(*) FILTER (WHERE constraint_definition.contype = 'c') AS check_constraints
+                  FROM pg_constraint constraint_definition
+                  JOIN pg_class table_relation
+                    ON table_relation.oid = constraint_definition.conrelid
+                  JOIN pg_namespace table_schema
+                    ON table_schema.oid = table_relation.relnamespace
+                 WHERE table_schema.nspname = 'public'
+                   AND table_relation.relname IN (
+                       'organizations', 'branches', 'user_statuses', 'users', 'roles',
+                       'permissions', 'role_permissions', 'user_roles', 'audit_logs',
+                       'departments', 'positions', 'user_credentials', 'employees',
+                       'user_branch_access', 'refresh_tokens', 'languages', 'nationalities',
+                       'gender_types', 'relationship_types', 'document_types',
+                       'document_verification_statuses', 'stored_files',
+                       'application_settings', 'number_sequences')
+                """,
+                (resultSet, rowNumber) -> new ConstraintCounts(
+                        resultSet.getInt("primary_keys"),
+                        resultSet.getInt("unique_constraints"),
+                        resultSet.getInt("foreign_keys"),
+                        resultSet.getInt("check_constraints")));
+
+        assertThat(constraintCounts).isEqualTo(new ConstraintCounts(24, 21, 37, 0));
     }
 
     @Test
@@ -251,6 +403,309 @@ class DatabaseInfrastructureIntegrationTest {
                 .containsExactly("user_id", "role_id", "branch_id");
         assertThat(index.predicate().replaceAll("[()\\s]", ""))
                 .isEqualTo("valid_untilISNULL");
+    }
+
+    @Test
+    void rejectsDuplicateOrganizationScopeDepartment() {
+        UUID organizationId = createOrganization();
+
+        jdbcTemplate.update(
+                """
+                INSERT INTO departments (
+                    id, organization_id, branch_id, code, name, created_at, updated_at)
+                VALUES (?, ?, NULL, 'OPERATIONS', 'Operations', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """,
+                UUID.randomUUID(),
+                organizationId);
+
+        assertSqlState("23505", () -> jdbcTemplate.update(
+                """
+                INSERT INTO departments (
+                    id, organization_id, branch_id, code, name, created_at, updated_at)
+                VALUES (?, ?, NULL, 'OPERATIONS', 'Duplicate', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """,
+                UUID.randomUUID(),
+                organizationId));
+    }
+
+    @Test
+    void permitsDepartmentCodeAcrossOrganizationsAndConcreteBranches() {
+        String organizationScopeCode = "DEPT_" + UUID.randomUUID();
+        UUID firstOrganizationId = createOrganization();
+        UUID secondOrganizationId = createOrganization();
+
+        insertDepartment(firstOrganizationId, null, organizationScopeCode);
+        insertDepartment(secondOrganizationId, null, organizationScopeCode);
+
+        Integer organizationScopeCount = jdbcTemplate.queryForObject(
+                """
+                SELECT count(*)
+                  FROM departments
+                 WHERE code = ?
+                   AND branch_id IS NULL
+                   AND organization_id IN (?, ?)
+                """,
+                Integer.class,
+                organizationScopeCode,
+                firstOrganizationId,
+                secondOrganizationId);
+        assertThat(organizationScopeCount)
+                .as("the same department code must coexist in different organizations")
+                .isEqualTo(2);
+
+        String branchScopeCode = "BRANCH_DEPT_" + UUID.randomUUID();
+        UUID branchOrganizationId = createOrganization();
+        UUID firstBranchId = createBranch(branchOrganizationId);
+        UUID secondBranchId = createBranch(branchOrganizationId);
+
+        insertDepartment(branchOrganizationId, firstBranchId, branchScopeCode);
+        insertDepartment(branchOrganizationId, secondBranchId, branchScopeCode);
+
+        Integer branchScopeCount = jdbcTemplate.queryForObject(
+                """
+                SELECT count(*)
+                  FROM departments
+                 WHERE organization_id = ?
+                   AND code = ?
+                   AND branch_id IN (?, ?)
+                """,
+                Integer.class,
+                branchOrganizationId,
+                branchScopeCode,
+                firstBranchId,
+                secondBranchId);
+        assertThat(branchScopeCount)
+                .as("the same department code must coexist in different concrete branches")
+                .isEqualTo(2);
+    }
+
+    @Test
+    void rejectsDuplicateDepartmentWithinConcreteBranch() {
+        UUID organizationId = createOrganization();
+        UUID branchId = createBranch(organizationId);
+        String code = "DEPT_" + UUID.randomUUID();
+
+        insertDepartment(organizationId, branchId, code);
+
+        assertSqlState("23505", () -> insertDepartment(organizationId, branchId, code));
+    }
+
+    @Test
+    void rejectsDuplicateOrganizationScopeApplicationSetting() {
+        UUID organizationId = createOrganization();
+
+        jdbcTemplate.update(
+                """
+                INSERT INTO application_settings (
+                    id, organization_id, branch_id, setting_key, value_type, updated_at)
+                VALUES (?, ?, NULL, 'locale.default', 'STRING', CURRENT_TIMESTAMP)
+                """,
+                UUID.randomUUID(),
+                organizationId);
+
+        assertSqlState("23505", () -> jdbcTemplate.update(
+                """
+                INSERT INTO application_settings (
+                    id, organization_id, branch_id, setting_key, value_type, updated_at)
+                VALUES (?, ?, NULL, 'locale.default', 'STRING', CURRENT_TIMESTAMP)
+                """,
+                UUID.randomUUID(),
+                organizationId));
+    }
+
+    @Test
+    void permitsApplicationSettingKeyAcrossOrganizationsAndConcreteBranches() {
+        String organizationScopeKey = "test.setting." + UUID.randomUUID();
+        UUID firstOrganizationId = createOrganization();
+        UUID secondOrganizationId = createOrganization();
+
+        insertApplicationSetting(firstOrganizationId, null, organizationScopeKey);
+        insertApplicationSetting(secondOrganizationId, null, organizationScopeKey);
+
+        Integer organizationScopeCount = jdbcTemplate.queryForObject(
+                """
+                SELECT count(*)
+                  FROM application_settings
+                 WHERE setting_key = ?
+                   AND branch_id IS NULL
+                   AND organization_id IN (?, ?)
+                """,
+                Integer.class,
+                organizationScopeKey,
+                firstOrganizationId,
+                secondOrganizationId);
+        assertThat(organizationScopeCount)
+                .as("the same setting key must coexist in different organizations")
+                .isEqualTo(2);
+
+        String branchScopeKey = "test.branch.setting." + UUID.randomUUID();
+        UUID branchOrganizationId = createOrganization();
+        UUID firstBranchId = createBranch(branchOrganizationId);
+        UUID secondBranchId = createBranch(branchOrganizationId);
+
+        insertApplicationSetting(branchOrganizationId, firstBranchId, branchScopeKey);
+        insertApplicationSetting(branchOrganizationId, secondBranchId, branchScopeKey);
+
+        Integer branchScopeCount = jdbcTemplate.queryForObject(
+                """
+                SELECT count(*)
+                  FROM application_settings
+                 WHERE organization_id = ?
+                   AND setting_key = ?
+                   AND branch_id IN (?, ?)
+                """,
+                Integer.class,
+                branchOrganizationId,
+                branchScopeKey,
+                firstBranchId,
+                secondBranchId);
+        assertThat(branchScopeCount)
+                .as("the same setting key must coexist in different concrete branches")
+                .isEqualTo(2);
+    }
+
+    @Test
+    void rejectsDuplicateApplicationSettingWithinConcreteBranch() {
+        UUID organizationId = createOrganization();
+        UUID branchId = createBranch(organizationId);
+        String settingKey = "test.setting." + UUID.randomUUID();
+
+        insertApplicationSetting(organizationId, branchId, settingKey);
+
+        assertSqlState(
+                "23505",
+                () -> insertApplicationSetting(organizationId, branchId, settingKey));
+    }
+
+    @Test
+    void rejectsDuplicateNullScopeNumberSequence() {
+        UUID organizationId = createOrganization();
+
+        jdbcTemplate.update(
+                """
+                INSERT INTO number_sequences (
+                    id, organization_id, branch_id, sequence_code, year, next_value, updated_at)
+                VALUES (?, ?, NULL, 'DOCUMENT', NULL, 1, CURRENT_TIMESTAMP)
+                """,
+                UUID.randomUUID(),
+                organizationId);
+
+        assertSqlState("23505", () -> jdbcTemplate.update(
+                """
+                INSERT INTO number_sequences (
+                    id, organization_id, branch_id, sequence_code, year, next_value, updated_at)
+                VALUES (?, ?, NULL, 'DOCUMENT', NULL, 2, CURRENT_TIMESTAMP)
+                """,
+                UUID.randomUUID(),
+                organizationId));
+    }
+
+    @Test
+    void permitsNumberSequencesAcrossYearsBranchesAndNullYearScope() {
+        UUID yearOrganizationId = createOrganization();
+        String yearCode = "YEAR_" + UUID.randomUUID();
+        insertNumberSequence(yearOrganizationId, null, yearCode, 2025);
+        insertNumberSequence(yearOrganizationId, null, yearCode, 2026);
+
+        Integer differentYearCount = jdbcTemplate.queryForObject(
+                """
+                SELECT count(*)
+                  FROM number_sequences
+                 WHERE organization_id = ?
+                   AND branch_id IS NULL
+                   AND sequence_code = ?
+                   AND year IN (2025, 2026)
+                """,
+                Integer.class,
+                yearOrganizationId,
+                yearCode);
+        assertThat(differentYearCount)
+                .as("the same sequence code must coexist across different years")
+                .isEqualTo(2);
+
+        UUID branchOrganizationId = createOrganization();
+        UUID firstBranchId = createBranch(branchOrganizationId);
+        UUID secondBranchId = createBranch(branchOrganizationId);
+        String branchCode = "BRANCH_" + UUID.randomUUID();
+        insertNumberSequence(branchOrganizationId, firstBranchId, branchCode, 2025);
+        insertNumberSequence(branchOrganizationId, secondBranchId, branchCode, 2025);
+
+        Integer differentBranchCount = jdbcTemplate.queryForObject(
+                """
+                SELECT count(*)
+                  FROM number_sequences
+                 WHERE organization_id = ?
+                   AND branch_id IN (?, ?)
+                   AND sequence_code = ?
+                   AND year = 2025
+                """,
+                Integer.class,
+                branchOrganizationId,
+                firstBranchId,
+                secondBranchId,
+                branchCode);
+        assertThat(differentBranchCount)
+                .as("the same sequence code and year must coexist across different branches")
+                .isEqualTo(2);
+
+        UUID nullableYearOrganizationId = createOrganization();
+        UUID nullableYearBranchId = createBranch(nullableYearOrganizationId);
+        String nullableYearCode = "NULL_YEAR_" + UUID.randomUUID();
+        insertNumberSequence(nullableYearOrganizationId, nullableYearBranchId, nullableYearCode, null);
+        insertNumberSequence(nullableYearOrganizationId, nullableYearBranchId, nullableYearCode, 2027);
+
+        Integer nullableYearCount = jdbcTemplate.queryForObject(
+                """
+                SELECT count(*)
+                  FROM number_sequences
+                 WHERE organization_id = ?
+                   AND branch_id = ?
+                   AND sequence_code = ?
+                   AND (year IS NULL OR year = 2027)
+                """,
+                Integer.class,
+                nullableYearOrganizationId,
+                nullableYearBranchId,
+                nullableYearCode);
+        assertThat(nullableYearCount)
+                .as("a NULL year and a concrete year must coexist in the same scope")
+                .isEqualTo(2);
+    }
+
+    @Test
+    void rejectsDuplicateNumberSequenceWithinConcreteBranchAndYear() {
+        UUID organizationId = createOrganization();
+        UUID branchId = createBranch(organizationId);
+        String sequenceCode = "SEQUENCE_" + UUID.randomUUID();
+
+        insertNumberSequence(organizationId, branchId, sequenceCode, 2025);
+
+        assertSqlState(
+                "23505",
+                () -> insertNumberSequence(organizationId, branchId, sequenceCode, 2025));
+    }
+
+    @Test
+    void rejectsDuplicateUserBranchAccess() {
+        UserRoleFixture fixture = createUserRoleFixture(true);
+
+        jdbcTemplate.update(
+                """
+                INSERT INTO user_branch_access (user_id, branch_id, granted_by, granted_at)
+                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                """,
+                fixture.userId(),
+                fixture.branchId(),
+                fixture.userId());
+
+        assertSqlState("23505", () -> jdbcTemplate.update(
+                """
+                INSERT INTO user_branch_access (user_id, branch_id, granted_by, granted_at)
+                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                """,
+                fixture.userId(),
+                fixture.branchId(),
+                fixture.userId()));
     }
 
     @Test
@@ -339,11 +794,8 @@ class DatabaseInfrastructureIntegrationTest {
         assertThat(rowCount).isEqualTo(1);
     }
 
-    private UserRoleFixture createUserRoleFixture(boolean withBranch) {
+    private UUID createOrganization() {
         UUID organizationId = UUID.randomUUID();
-        UUID userId = UUID.randomUUID();
-        UUID roleId = UUID.randomUUID();
-        UUID branchId = withBranch ? UUID.randomUUID() : null;
 
         jdbcTemplate.update(
                 """
@@ -353,16 +805,68 @@ class DatabaseInfrastructureIntegrationTest {
                 organizationId,
                 "ORG_" + organizationId);
 
-        if (branchId != null) {
-            jdbcTemplate.update(
-                    """
-                    INSERT INTO branches (id, organization_id, code, name, created_at, updated_at)
-                    VALUES (?, ?, ?, 'Integration test branch', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                    """,
-                    branchId,
-                    organizationId,
-                    "BRANCH_" + branchId);
-        }
+        return organizationId;
+    }
+
+    private UUID createBranch(UUID organizationId) {
+        UUID branchId = UUID.randomUUID();
+        jdbcTemplate.update(
+                """
+                INSERT INTO branches (id, organization_id, code, name, created_at, updated_at)
+                VALUES (?, ?, ?, 'Integration test branch', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """,
+                branchId,
+                organizationId,
+                "BRANCH_" + branchId);
+        return branchId;
+    }
+
+    private void insertDepartment(UUID organizationId, UUID branchId, String code) {
+        jdbcTemplate.update(
+                """
+                INSERT INTO departments (
+                    id, organization_id, branch_id, code, name, created_at, updated_at)
+                VALUES (?, ?, ?, ?, 'Integration test department', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """,
+                UUID.randomUUID(),
+                organizationId,
+                branchId,
+                code);
+    }
+
+    private void insertApplicationSetting(UUID organizationId, UUID branchId, String settingKey) {
+        jdbcTemplate.update(
+                """
+                INSERT INTO application_settings (
+                    id, organization_id, branch_id, setting_key, value_type, updated_at)
+                VALUES (?, ?, ?, ?, 'STRING', CURRENT_TIMESTAMP)
+                """,
+                UUID.randomUUID(),
+                organizationId,
+                branchId,
+                settingKey);
+    }
+
+    private void insertNumberSequence(
+            UUID organizationId, UUID branchId, String sequenceCode, Integer year) {
+        jdbcTemplate.update(
+                """
+                INSERT INTO number_sequences (
+                    id, organization_id, branch_id, sequence_code, year, next_value, updated_at)
+                VALUES (?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
+                """,
+                UUID.randomUUID(),
+                organizationId,
+                branchId,
+                sequenceCode,
+                year);
+    }
+
+    private UserRoleFixture createUserRoleFixture(boolean withBranch) {
+        UUID organizationId = createOrganization();
+        UUID userId = UUID.randomUUID();
+        UUID roleId = UUID.randomUUID();
+        UUID branchId = withBranch ? createBranch(organizationId) : null;
 
         jdbcTemplate.update(
                 """
@@ -453,6 +957,169 @@ class DatabaseInfrastructureIntegrationTest {
         assertThat(((SQLException) mostSpecificCause).getSQLState()).isEqualTo(expectedSqlState);
     }
 
+    private List<ColumnMetadata> expectedRemainingColumns() {
+        return """
+                departments|id|uuid||false|
+                departments|organization_id|uuid||false|
+                departments|branch_id|uuid||true|
+                departments|parent_department_id|uuid||true|
+                departments|code|character varying|50|false|
+                departments|name|character varying|255|false|
+                departments|is_active|boolean||false|true
+                departments|created_at|timestamp with time zone||false|
+                departments|updated_at|timestamp with time zone||false|
+                positions|id|uuid||false|
+                positions|organization_id|uuid||false|
+                positions|code|character varying|50|false|
+                positions|name|character varying|255|false|
+                positions|is_active|boolean||false|true
+                positions|created_at|timestamp with time zone||false|
+                positions|updated_at|timestamp with time zone||false|
+                user_credentials|user_id|uuid||false|
+                user_credentials|password_hash|character varying|255|false|
+                user_credentials|password_changed_at|timestamp with time zone||false|
+                user_credentials|failed_login_attempts|integer||false|0
+                user_credentials|locked_until|timestamp with time zone||true|
+                user_credentials|created_at|timestamp with time zone||false|
+                user_credentials|updated_at|timestamp with time zone||false|
+                employees|id|uuid||false|
+                employees|user_id|uuid||true|
+                employees|branch_id|uuid||false|
+                employees|department_id|uuid||true|
+                employees|position_id|uuid||true|
+                employees|employee_number|character varying|50|false|
+                employees|employment_start_date|date||false|
+                employees|employment_end_date|date||true|
+                employees|is_active|boolean||false|true
+                employees|created_at|timestamp with time zone||false|
+                employees|updated_at|timestamp with time zone||false|
+                user_branch_access|user_id|uuid||false|
+                user_branch_access|branch_id|uuid||false|
+                user_branch_access|granted_by|uuid||false|
+                user_branch_access|granted_at|timestamp with time zone||false|
+                refresh_tokens|id|uuid||false|
+                refresh_tokens|user_id|uuid||false|
+                refresh_tokens|token_hash|character varying|255|false|
+                refresh_tokens|expires_at|timestamp with time zone||false|
+                refresh_tokens|revoked_at|timestamp with time zone||true|
+                refresh_tokens|created_at|timestamp with time zone||false|
+                refresh_tokens|created_ip|character varying|64|true|
+                refresh_tokens|user_agent|text||true|
+                languages|id|uuid||false|
+                languages|code|character varying|20|false|
+                languages|name|character varying|100|false|
+                languages|is_active|boolean||false|true
+                languages|sort_order|integer||false|0
+                nationalities|id|uuid||false|
+                nationalities|code|character varying|30|false|
+                nationalities|name|character varying|100|false|
+                nationalities|is_active|boolean||false|true
+                gender_types|id|uuid||false|
+                gender_types|code|character varying|30|false|
+                gender_types|name|character varying|100|false|
+                gender_types|is_active|boolean||false|true
+                relationship_types|id|uuid||false|
+                relationship_types|code|character varying|50|false|
+                relationship_types|name|character varying|100|false|
+                relationship_types|is_active|boolean||false|true
+                document_types|id|uuid||false|
+                document_types|code|character varying|50|false|
+                document_types|name|character varying|150|false|
+                document_types|applies_to|character varying|50|false|
+                document_types|is_active|boolean||false|true
+                document_verification_statuses|id|uuid||false|
+                document_verification_statuses|code|character varying|50|false|
+                document_verification_statuses|name|character varying|100|false|
+                document_verification_statuses|is_final|boolean||false|false
+                document_verification_statuses|is_active|boolean||false|true
+                stored_files|id|uuid||false|
+                stored_files|organization_id|uuid||false|
+                stored_files|branch_id|uuid||true|
+                stored_files|storage_provider|character varying|40|false|
+                stored_files|bucket_name|character varying|120|false|
+                stored_files|object_key|character varying|500|false|
+                stored_files|original_file_name|character varying|255|false|
+                stored_files|content_type|character varying|150|false|
+                stored_files|file_size|bigint||false|
+                stored_files|checksum|character varying|128|true|
+                stored_files|uploaded_by|uuid||true|
+                stored_files|uploaded_at|timestamp with time zone||false|
+                stored_files|deleted_at|timestamp with time zone||true|
+                application_settings|id|uuid||false|
+                application_settings|organization_id|uuid||false|
+                application_settings|branch_id|uuid||true|
+                application_settings|setting_key|character varying|150|false|
+                application_settings|setting_value|text||true|
+                application_settings|value_type|character varying|40|false|
+                application_settings|is_sensitive|boolean||false|false
+                application_settings|updated_by|uuid||true|
+                application_settings|updated_at|timestamp with time zone||false|
+                number_sequences|id|uuid||false|
+                number_sequences|organization_id|uuid||false|
+                number_sequences|branch_id|uuid||true|
+                number_sequences|sequence_code|character varying|80|false|
+                number_sequences|year|integer||true|
+                number_sequences|prefix|character varying|30|true|
+                number_sequences|next_value|bigint||false|
+                number_sequences|padding_length|integer||false|6
+                number_sequences|updated_at|timestamp with time zone||false|
+                """
+                .lines()
+                .map(String::strip)
+                .filter(line -> !line.isEmpty())
+                .map(line -> {
+                    String[] fields = line.split("\\|", -1);
+                    Integer length = fields[3].isEmpty() ? null : Integer.valueOf(fields[3]);
+                    String defaultValue = fields[5].isEmpty() ? null : fields[5];
+                    return new ColumnMetadata(
+                            fields[0],
+                            fields[1],
+                            fields[2],
+                            length,
+                            Boolean.parseBoolean(fields[4]),
+                            defaultValue);
+                })
+                .toList();
+    }
+
+    private List<KeyMetadata> expectedRemainingKeys() {
+        return List.of(
+                key("departments", "PRIMARY KEY", "id", false),
+                key("departments", "UNIQUE", "organization_id,branch_id,code", true),
+                key("positions", "PRIMARY KEY", "id", false),
+                key("positions", "UNIQUE", "organization_id,code", false),
+                key("user_credentials", "PRIMARY KEY", "user_id", false),
+                key("employees", "PRIMARY KEY", "id", false),
+                key("employees", "UNIQUE", "user_id", false),
+                key("employees", "UNIQUE", "employee_number", false),
+                key("user_branch_access", "PRIMARY KEY", "user_id,branch_id", false),
+                key("refresh_tokens", "PRIMARY KEY", "id", false),
+                key("refresh_tokens", "UNIQUE", "token_hash", false),
+                key("languages", "PRIMARY KEY", "id", false),
+                key("languages", "UNIQUE", "code", false),
+                key("nationalities", "PRIMARY KEY", "id", false),
+                key("nationalities", "UNIQUE", "code", false),
+                key("gender_types", "PRIMARY KEY", "id", false),
+                key("gender_types", "UNIQUE", "code", false),
+                key("relationship_types", "PRIMARY KEY", "id", false),
+                key("relationship_types", "UNIQUE", "code", false),
+                key("document_types", "PRIMARY KEY", "id", false),
+                key("document_types", "UNIQUE", "code", false),
+                key("document_verification_statuses", "PRIMARY KEY", "id", false),
+                key("document_verification_statuses", "UNIQUE", "code", false),
+                key("stored_files", "PRIMARY KEY", "id", false),
+                key("stored_files", "UNIQUE", "storage_provider,bucket_name,object_key", false),
+                key("application_settings", "PRIMARY KEY", "id", false),
+                key("application_settings", "UNIQUE", "organization_id,branch_id,setting_key", true),
+                key("number_sequences", "PRIMARY KEY", "id", false),
+                key("number_sequences", "UNIQUE", "organization_id,branch_id,sequence_code,year", true));
+    }
+
+    private KeyMetadata key(
+            String tableName, String keyType, String keyColumns, boolean nullsNotDistinct) {
+        return new KeyMetadata(tableName, keyType, keyColumns, nullsNotDistinct, "btree");
+    }
+
     private List<ForeignKeyMetadata> expectedForeignKeys() {
         return List.of(
                 restrictedForeignKey("branches", "organization_id", "organizations"),
@@ -470,7 +1137,28 @@ class DatabaseInfrastructureIntegrationTest {
                 restrictedForeignKey("user_roles", "assigned_by", "users"),
                 restrictedForeignKey("audit_logs", "organization_id", "organizations"),
                 restrictedForeignKey("audit_logs", "branch_id", "branches"),
-                restrictedForeignKey("audit_logs", "actor_user_id", "users"));
+                restrictedForeignKey("audit_logs", "actor_user_id", "users"),
+                restrictedForeignKey("departments", "organization_id", "organizations"),
+                restrictedForeignKey("departments", "branch_id", "branches"),
+                restrictedForeignKey("departments", "parent_department_id", "departments"),
+                restrictedForeignKey("positions", "organization_id", "organizations"),
+                restrictedForeignKey("user_credentials", "user_id", "users"),
+                restrictedForeignKey("employees", "user_id", "users"),
+                restrictedForeignKey("employees", "branch_id", "branches"),
+                restrictedForeignKey("employees", "department_id", "departments"),
+                restrictedForeignKey("employees", "position_id", "positions"),
+                restrictedForeignKey("user_branch_access", "user_id", "users"),
+                restrictedForeignKey("user_branch_access", "branch_id", "branches"),
+                restrictedForeignKey("user_branch_access", "granted_by", "users"),
+                restrictedForeignKey("refresh_tokens", "user_id", "users"),
+                restrictedForeignKey("stored_files", "organization_id", "organizations"),
+                restrictedForeignKey("stored_files", "branch_id", "branches"),
+                restrictedForeignKey("stored_files", "uploaded_by", "users"),
+                restrictedForeignKey("application_settings", "organization_id", "organizations"),
+                restrictedForeignKey("application_settings", "branch_id", "branches"),
+                restrictedForeignKey("application_settings", "updated_by", "users"),
+                restrictedForeignKey("number_sequences", "organization_id", "organizations"),
+                restrictedForeignKey("number_sequences", "branch_id", "branches"));
     }
 
     private ForeignKeyMetadata restrictedForeignKey(
@@ -480,6 +1168,27 @@ class DatabaseInfrastructureIntegrationTest {
     }
 
     private record UserStatusSeed(UUID id, String code) {}
+
+    private record ColumnMetadata(
+            String tableName,
+            String columnName,
+            String dataType,
+            Integer maximumLength,
+            boolean nullable,
+            String defaultValue) {}
+
+    private record KeyMetadata(
+            String tableName,
+            String keyType,
+            String keyColumns,
+            boolean nullsNotDistinct,
+            String accessMethod) {}
+
+    private record ConstraintCounts(
+            int primaryKeys,
+            int uniqueConstraints,
+            int foreignKeys,
+            int checkConstraints) {}
 
     private record ForeignKeyMetadata(
             String sourceTable,
