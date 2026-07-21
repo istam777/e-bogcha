@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.sql.SQLException;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
@@ -53,7 +54,7 @@ class DatabaseInfrastructureIntegrationTest {
     private ApplicationContext applicationContext;
 
     @Test
-    void appliesOnlyTheApprovedSchemasThroughV10() {
+    void appliesOnlyTheApprovedSchemasThroughV11() {
         Integer connectivityCheck = jdbcTemplate.queryForObject("SELECT 1", Integer.class);
         assertThat(connectivityCheck).isEqualTo(1);
 
@@ -64,7 +65,7 @@ class DatabaseInfrastructureIntegrationTest {
         assertThat(flyway.info().pending()).isEmpty();
         assertThat(flyway.info().applied())
                 .extracting(migration -> migration.getVersion().getVersion())
-                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10");
+                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11");
 
         List<String> foundationTables = jdbcTemplate.queryForList(
                 """
@@ -84,6 +85,10 @@ class DatabaseInfrastructureIntegrationTest {
                 "call_directions",
                 "call_dispositions",
                 "call_event_types",
+                "call_events",
+                "call_participants",
+                "call_recordings",
+                "call_sessions",
                 "departments",
                 "document_types",
                 "document_verification_statuses",
@@ -94,6 +99,7 @@ class DatabaseInfrastructureIntegrationTest {
                 "lead_activities",
                 "lead_activity_types",
                 "lead_assignments",
+                "lead_calls",
                 "lead_duplicates",
                 "lead_notes",
                 "lead_phones",
@@ -125,6 +131,7 @@ class DatabaseInfrastructureIntegrationTest {
                 "user_roles",
                 "user_statuses",
                 "users",
+                "webhook_events",
                 "webhook_statuses");
 
         List<String> crmReferenceTables = jdbcTemplate.queryForList(
@@ -200,14 +207,31 @@ class DatabaseInfrastructureIntegrationTest {
                 "sip_accounts",
                 "webhook_statuses");
 
+        List<String> telephonyCallTables = jdbcTemplate.queryForList(
+                """
+                SELECT table_name
+                  FROM information_schema.tables
+                 WHERE table_schema = 'public'
+                   AND table_name IN (
+                       'call_sessions', 'call_participants', 'call_events',
+                       'call_recordings', 'lead_calls', 'webhook_events')
+                 ORDER BY table_name
+                """,
+                String.class);
+        assertThat(telephonyCallTables).containsExactly(
+                "call_events",
+                "call_participants",
+                "call_recordings",
+                "call_sessions",
+                "lead_calls",
+                "webhook_events");
+
         Integer prohibitedTableCount = jdbcTemplate.queryForObject(
                 """
                 SELECT count(*)
                   FROM information_schema.tables
                  WHERE table_schema = 'public'
                    AND table_name IN (
-                       'call_sessions', 'call_participants', 'call_events',
-                       'call_recordings', 'lead_calls', 'webhook_events',
                        'lead_conversions', 'children', 'admission_applications', 'contracts')
                 """,
                 Integer.class);
@@ -257,6 +281,12 @@ class DatabaseInfrastructureIntegrationTest {
                      + (SELECT count(*) FROM extensions)
                      + (SELECT count(*) FROM sip_accounts)
                      + (SELECT count(*) FROM phone_numbers)
+                     + (SELECT count(*) FROM call_sessions)
+                     + (SELECT count(*) FROM call_participants)
+                     + (SELECT count(*) FROM call_events)
+                     + (SELECT count(*) FROM call_recordings)
+                     + (SELECT count(*) FROM lead_calls)
+                     + (SELECT count(*) FROM webhook_events)
                 """,
                 Integer.class);
         assertThat(unseededReferenceRowCount).isZero();
@@ -321,7 +351,8 @@ class DatabaseInfrastructureIntegrationTest {
                        'lead_tasks', 'tours', 'lead_duplicates', 'pbx_configs',
                        'extensions', 'sip_accounts', 'phone_numbers',
                        'call_directions', 'call_dispositions', 'call_event_types',
-                       'webhook_statuses')
+                       'webhook_statuses', 'call_sessions', 'call_participants',
+                       'call_events', 'call_recordings', 'lead_calls', 'webhook_events')
                 """,
                 (resultSet, rowNumber) -> new ForeignKeyMetadata(
                         resultSet.getString("source_table"),
@@ -380,7 +411,9 @@ class DatabaseInfrastructureIntegrationTest {
                        'lead_phones', 'prospective_children', 'lead_assignments',
                        'lead_status_history', 'lead_activities', 'lead_notes',
                        'lead_tasks', 'tours', 'lead_duplicates', 'pbx_configs',
-                       'extensions', 'sip_accounts', 'phone_numbers')
+                       'extensions', 'sip_accounts', 'phone_numbers', 'call_sessions',
+                       'call_participants', 'call_events', 'call_recordings',
+                       'lead_calls', 'webhook_events')
                 """,
                 (resultSet, rowNumber) -> new ForeignKeyIndexCoverage(
                         resultSet.getString("source_table"),
@@ -507,7 +540,8 @@ class DatabaseInfrastructureIntegrationTest {
                        'lead_tasks', 'tours', 'lead_duplicates', 'pbx_configs',
                        'extensions', 'sip_accounts', 'phone_numbers',
                        'call_directions', 'call_dispositions', 'call_event_types',
-                       'webhook_statuses')
+                       'webhook_statuses', 'call_sessions', 'call_participants',
+                       'call_events', 'call_recordings', 'lead_calls', 'webhook_events')
                 """,
                 (resultSet, rowNumber) -> new ConstraintCounts(
                         resultSet.getInt("primary_keys"),
@@ -515,7 +549,7 @@ class DatabaseInfrastructureIntegrationTest {
                         resultSet.getInt("foreign_keys"),
                         resultSet.getInt("check_constraints")));
 
-        assertThat(constraintCounts).isEqualTo(new ConstraintCounts(48, 35, 83, 1));
+        assertThat(constraintCounts).isEqualTo(new ConstraintCounts(54, 37, 98, 1));
     }
 
     @Test
@@ -780,7 +814,9 @@ class DatabaseInfrastructureIntegrationTest {
                        'lead_notes', 'lead_tasks', 'tours', 'lead_duplicates',
                        'call_directions', 'call_dispositions', 'call_event_types',
                        'webhook_statuses', 'pbx_configs', 'extensions',
-                       'sip_accounts', 'phone_numbers')
+                       'sip_accounts', 'phone_numbers', 'call_sessions',
+                       'call_participants', 'call_events', 'call_recordings',
+                       'webhook_events')
                  ORDER BY table_name
                 """,
                 (resultSet, rowNumber) -> new ColumnDefaultMetadata(
@@ -790,6 +826,10 @@ class DatabaseInfrastructureIntegrationTest {
                 new ColumnDefaultMetadata("call_directions", null),
                 new ColumnDefaultMetadata("call_dispositions", null),
                 new ColumnDefaultMetadata("call_event_types", null),
+                new ColumnDefaultMetadata("call_events", null),
+                new ColumnDefaultMetadata("call_participants", null),
+                new ColumnDefaultMetadata("call_recordings", null),
+                new ColumnDefaultMetadata("call_sessions", null),
                 new ColumnDefaultMetadata("extensions", null),
                 new ColumnDefaultMetadata("lead_activities", null),
                 new ColumnDefaultMetadata("lead_activity_types", null),
@@ -810,6 +850,7 @@ class DatabaseInfrastructureIntegrationTest {
                 new ColumnDefaultMetadata("sip_accounts", null),
                 new ColumnDefaultMetadata("tour_outcomes", null),
                 new ColumnDefaultMetadata("tours", null),
+                new ColumnDefaultMetadata("webhook_events", null),
                 new ColumnDefaultMetadata("webhook_statuses", null));
 
         List<String> uuidExtensions = jdbcTemplate.queryForList(
@@ -1455,6 +1496,248 @@ class DatabaseInfrastructureIntegrationTest {
     }
 
     @Test
+    void definesExactTelephonyCallColumnMetadata() {
+        List<ColumnMetadata> actualColumns = jdbcTemplate.query(
+                """
+                SELECT table_name,
+                       column_name,
+                       data_type,
+                       character_maximum_length,
+                       is_nullable,
+                       column_default
+                  FROM information_schema.columns
+                 WHERE table_schema = 'public'
+                   AND table_name IN (
+                       'call_sessions', 'call_participants', 'call_events',
+                       'call_recordings', 'lead_calls', 'webhook_events')
+                """,
+                (resultSet, rowNumber) -> new ColumnMetadata(
+                        resultSet.getString("table_name"),
+                        resultSet.getString("column_name"),
+                        resultSet.getString("data_type"),
+                        resultSet.getObject("character_maximum_length", Integer.class),
+                        "YES".equals(resultSet.getString("is_nullable")),
+                        resultSet.getString("column_default")));
+
+        assertThat(actualColumns)
+                .containsExactlyInAnyOrderElementsOf(expectedTelephonyCallColumns());
+    }
+
+    @Test
+    void definesExactTelephonyCallKeysAndConstraintCounts() {
+        List<KeyMetadata> actualKeys = jdbcTemplate.query(
+                """
+                SELECT table_relation.relname AS table_name,
+                       CASE constraint_definition.contype
+                           WHEN 'p' THEN 'PRIMARY KEY'
+                           WHEN 'u' THEN 'UNIQUE'
+                       END AS key_type,
+                       string_agg(attribute.attname, ',' ORDER BY key_position.ordinality)
+                           AS key_columns,
+                       index_definition.indnullsnotdistinct,
+                       access_method.amname AS access_method
+                  FROM pg_constraint constraint_definition
+                  JOIN pg_class table_relation
+                    ON table_relation.oid = constraint_definition.conrelid
+                  JOIN pg_namespace table_schema
+                    ON table_schema.oid = table_relation.relnamespace
+                  JOIN pg_index index_definition
+                    ON index_definition.indexrelid = constraint_definition.conindid
+                  JOIN pg_class index_relation
+                    ON index_relation.oid = index_definition.indexrelid
+                  JOIN pg_am access_method
+                    ON access_method.oid = index_relation.relam
+                  JOIN LATERAL unnest(constraint_definition.conkey) WITH ORDINALITY
+                       AS key_position(attribute_number, ordinality) ON TRUE
+                  JOIN pg_attribute attribute
+                    ON attribute.attrelid = table_relation.oid
+                   AND attribute.attnum = key_position.attribute_number
+                 WHERE table_schema.nspname = 'public'
+                   AND constraint_definition.contype IN ('p', 'u')
+                   AND table_relation.relname IN (
+                       'call_sessions', 'call_participants', 'call_events',
+                       'call_recordings', 'lead_calls', 'webhook_events')
+                 GROUP BY table_relation.relname,
+                          constraint_definition.oid,
+                          constraint_definition.contype,
+                          index_definition.indnullsnotdistinct,
+                          access_method.amname
+                """,
+                (resultSet, rowNumber) -> new KeyMetadata(
+                        resultSet.getString("table_name"),
+                        resultSet.getString("key_type"),
+                        resultSet.getString("key_columns"),
+                        resultSet.getBoolean("indnullsnotdistinct"),
+                        resultSet.getString("access_method")));
+        assertThat(actualKeys).containsExactlyInAnyOrderElementsOf(expectedTelephonyCallKeys());
+
+        ConstraintCounts counts = jdbcTemplate.queryForObject(
+                """
+                SELECT count(*) FILTER (WHERE constraint_definition.contype = 'p') AS primary_keys,
+                       count(*) FILTER (WHERE constraint_definition.contype = 'u') AS unique_constraints,
+                       count(*) FILTER (WHERE constraint_definition.contype = 'f') AS foreign_keys,
+                       count(*) FILTER (WHERE constraint_definition.contype = 'c') AS check_constraints
+                  FROM pg_constraint constraint_definition
+                  JOIN pg_class table_relation
+                    ON table_relation.oid = constraint_definition.conrelid
+                  JOIN pg_namespace table_schema
+                    ON table_schema.oid = table_relation.relnamespace
+                 WHERE table_schema.nspname = 'public'
+                   AND table_relation.relname IN (
+                       'call_sessions', 'call_participants', 'call_events',
+                       'call_recordings', 'lead_calls', 'webhook_events')
+                """,
+                (resultSet, rowNumber) -> new ConstraintCounts(
+                        resultSet.getInt("primary_keys"),
+                        resultSet.getInt("unique_constraints"),
+                        resultSet.getInt("foreign_keys"),
+                        resultSet.getInt("check_constraints")));
+        assertThat(counts).isEqualTo(new ConstraintCounts(6, 2, 15, 0));
+
+        List<String> leadCallColumns = jdbcTemplate.queryForList(
+                """
+                SELECT column_name
+                  FROM information_schema.columns
+                 WHERE table_schema = 'public'
+                   AND table_name = 'lead_calls'
+                 ORDER BY ordinal_position
+                """,
+                String.class);
+        assertThat(leadCallColumns)
+                .containsExactly("lead_id", "call_session_id", "linked_by", "linked_at");
+    }
+
+    @Test
+    void definesExactTelephonyCallIndexInventory() {
+        List<IndexMetadata> indexes = jdbcTemplate.query(
+                """
+                SELECT table_relation.relname AS table_name,
+                       index_relation.relname AS index_name,
+                       index_definition.indisunique,
+                       index_definition.indnullsnotdistinct,
+                       access_method.amname AS access_method,
+                       index_definition.indisvalid,
+                       index_definition.indisready,
+                       index_definition.indpred IS NOT NULL AS partial,
+                       string_agg(attribute.attname, ',' ORDER BY key_position.position)
+                           AS key_columns
+                  FROM pg_index index_definition
+                  JOIN pg_class index_relation
+                    ON index_relation.oid = index_definition.indexrelid
+                  JOIN pg_class table_relation
+                    ON table_relation.oid = index_definition.indrelid
+                  JOIN pg_namespace table_schema
+                    ON table_schema.oid = table_relation.relnamespace
+                  JOIN pg_am access_method
+                    ON access_method.oid = index_relation.relam
+                  JOIN LATERAL generate_series(0, index_definition.indnkeyatts - 1)
+                       AS key_position(position) ON TRUE
+                  JOIN pg_attribute attribute
+                    ON attribute.attrelid = table_relation.oid
+                   AND attribute.attnum = index_definition.indkey[key_position.position]
+                 WHERE table_schema.nspname = 'public'
+                   AND table_relation.relname IN (
+                       'call_sessions', 'call_participants', 'call_events',
+                       'call_recordings', 'lead_calls', 'webhook_events')
+                   AND NOT index_definition.indisprimary
+                 GROUP BY table_relation.relname,
+                          index_relation.relname,
+                          index_definition.indisunique,
+                          index_definition.indnullsnotdistinct,
+                          access_method.amname,
+                          index_definition.indisvalid,
+                          index_definition.indisready,
+                          index_definition.indpred
+                """,
+                (resultSet, rowNumber) -> new IndexMetadata(
+                        resultSet.getString("table_name"),
+                        resultSet.getString("index_name"),
+                        resultSet.getBoolean("indisunique"),
+                        resultSet.getBoolean("indnullsnotdistinct"),
+                        resultSet.getString("access_method"),
+                        resultSet.getBoolean("indisvalid"),
+                        resultSet.getBoolean("indisready"),
+                        resultSet.getBoolean("partial"),
+                        resultSet.getString("key_columns")));
+        assertThat(indexes).containsExactlyInAnyOrderElementsOf(expectedTelephonyCallIndexes());
+
+        Integer primaryIndexCount = jdbcTemplate.queryForObject(
+                """
+                SELECT count(*)
+                  FROM pg_index index_definition
+                  JOIN pg_class table_relation
+                    ON table_relation.oid = index_definition.indrelid
+                  JOIN pg_namespace table_schema
+                    ON table_schema.oid = table_relation.relnamespace
+                  JOIN pg_class index_relation
+                    ON index_relation.oid = index_definition.indexrelid
+                  JOIN pg_am access_method
+                    ON access_method.oid = index_relation.relam
+                 WHERE table_schema.nspname = 'public'
+                   AND table_relation.relname IN (
+                       'call_sessions', 'call_participants', 'call_events',
+                       'call_recordings', 'lead_calls', 'webhook_events')
+                   AND index_definition.indisprimary
+                   AND index_definition.indisvalid
+                   AND index_definition.indisready
+                   AND index_definition.indpred IS NULL
+                   AND NOT index_definition.indnullsnotdistinct
+                   AND access_method.amname = 'btree'
+                """,
+                Integer.class);
+        assertThat(primaryIndexCount).isEqualTo(6);
+    }
+
+    @Test
+    void providesLeadingBtreeCoverageForEveryTelephonyCallForeignKey() {
+        List<ForeignKeyIndexCoverage> actualCoverage = jdbcTemplate.query(
+                """
+                SELECT source_table.relname AS source_table,
+                       source_attribute.attname AS source_column,
+                       EXISTS (
+                           SELECT 1
+                             FROM pg_index index_definition
+                             JOIN pg_class index_relation
+                               ON index_relation.oid = index_definition.indexrelid
+                             JOIN pg_am access_method
+                               ON access_method.oid = index_relation.relam
+                            WHERE index_definition.indrelid = source_table.oid
+                              AND index_definition.indisvalid
+                              AND index_definition.indisready
+                              AND index_definition.indpred IS NULL
+                              AND index_definition.indnkeyatts > 0
+                              AND index_definition.indkey[0] = source_attribute.attnum
+                              AND access_method.amname = 'btree'
+                       ) AS covered
+                  FROM pg_constraint constraint_definition
+                  JOIN pg_class source_table
+                    ON source_table.oid = constraint_definition.conrelid
+                  JOIN pg_namespace source_schema
+                    ON source_schema.oid = source_table.relnamespace
+                  JOIN LATERAL unnest(constraint_definition.conkey)
+                       AS source_key(attribute_number) ON TRUE
+                  JOIN pg_attribute source_attribute
+                    ON source_attribute.attrelid = source_table.oid
+                   AND source_attribute.attnum = source_key.attribute_number
+                 WHERE constraint_definition.contype = 'f'
+                   AND source_schema.nspname = 'public'
+                   AND source_table.relname IN (
+                       'call_sessions', 'call_participants', 'call_events',
+                       'call_recordings', 'lead_calls', 'webhook_events')
+                """,
+                (resultSet, rowNumber) -> new ForeignKeyIndexCoverage(
+                        resultSet.getString("source_table"),
+                        resultSet.getString("source_column"),
+                        resultSet.getBoolean("covered")));
+
+        List<ForeignKeyIndexCoverage> expectedCoverage = expectedTelephonyCallForeignKeys().stream()
+                .map(foreignKey -> new ForeignKeyIndexCoverage(
+                        foreignKey.sourceTable(), foreignKey.sourceColumn(), true))
+                .toList();
+        assertThat(actualCoverage).containsExactlyInAnyOrderElementsOf(expectedCoverage);
+    }
+
+    @Test
     void enforcesGlobalTelephonyReferenceCodeUniqueness() {
         for (String tableName : telephonyReferenceTables()) {
             String firstCode = genericTelephonyValue("CODE");
@@ -1555,6 +1838,322 @@ class DatabaseInfrastructureIntegrationTest {
             assertThat(countRowsForPbx("extensions", fixture.firstPbxId())).isZero();
         } finally {
             deleteTelephonyFixture(fixture);
+        }
+    }
+
+    @Test
+    void enforcesPbxScopedCallIdentityAndPreservesApplicationOwnedSessionFields() {
+        TelephonyCallFixture fixture = createTelephonyCallFixture();
+        String sharedExternalCallId = genericTelephonyValue("CALL");
+        try {
+            UUID firstSessionId = insertCallSession(
+                    fixture.telephonyFixture().firstPbxId(),
+                    fixture.directionId(),
+                    sharedExternalCallId);
+            assertSqlState(
+                    "23505",
+                    () -> insertCallSession(
+                            fixture.telephonyFixture().firstPbxId(),
+                            fixture.directionId(),
+                            sharedExternalCallId));
+            insertCallSession(
+                    fixture.telephonyFixture().secondPbxId(),
+                    fixture.directionId(),
+                    sharedExternalCallId);
+            UUID applicationInvalidSessionId = insertApplicationInvalidCallSession(
+                    fixture.telephonyFixture().firstPbxId(), fixture.directionId());
+
+            Map<String, Object> defaultedSession = jdbcTemplate.queryForMap(
+                    """
+                    SELECT disposition_id, answered_at, ended_at, duration_seconds
+                      FROM call_sessions
+                     WHERE id = ?
+                    """,
+                    firstSessionId);
+            assertThat(defaultedSession.get("disposition_id")).isNull();
+            assertThat(defaultedSession.get("answered_at")).isNull();
+            assertThat(defaultedSession.get("ended_at")).isNull();
+            assertThat(defaultedSession.get("duration_seconds")).isEqualTo(0);
+            assertThat(jdbcTemplate.queryForObject(
+                            "SELECT duration_seconds FROM call_sessions WHERE id = ?",
+                            Integer.class,
+                            applicationInvalidSessionId))
+                    .isEqualTo(-1);
+            assertThat(countRowsForPbx("call_sessions", fixture.telephonyFixture().firstPbxId()))
+                    .isEqualTo(2);
+            assertThat(countRowsForPbx("call_sessions", fixture.telephonyFixture().secondPbxId()))
+                    .isEqualTo(1);
+        } finally {
+            deleteTelephonyCallFixture(fixture);
+        }
+    }
+
+    @Test
+    void permitsFlexibleCallParticipantsWithoutDatabaseRoleValidation() {
+        TelephonyCallFixture fixture = createTelephonyCallFixture();
+        UUID callSessionId = insertCallSession(
+                fixture.telephonyFixture().firstPbxId(),
+                fixture.directionId(),
+                genericTelephonyValue("CALL"));
+        try {
+            insertCallParticipant(callSessionId, "CALLER");
+            insertCallParticipant(callSessionId, "AGENT");
+            insertCallParticipant(callSessionId, "TEST_ONLY_UNRECOGNIZED_ROLE");
+
+            List<Map<String, Object>> participants = jdbcTemplate.queryForList(
+                    """
+                    SELECT participant_role, user_id, extension_id, normalized_phone,
+                           joined_at, left_at
+                      FROM call_participants
+                     WHERE call_session_id = ?
+                     ORDER BY participant_role
+                    """,
+                    callSessionId);
+            assertThat(participants).hasSize(3);
+            assertThat(participants)
+                    .extracting(row -> row.get("participant_role"))
+                    .containsExactly("AGENT", "CALLER", "TEST_ONLY_UNRECOGNIZED_ROLE");
+            assertThat(participants)
+                    .allSatisfy(row -> {
+                        assertThat(row.get("user_id")).isNull();
+                        assertThat(row.get("extension_id")).isNull();
+                        assertThat(row.get("normalized_phone")).isNull();
+                        assertThat(row.get("joined_at")).isNull();
+                        assertThat(row.get("left_at")).isNull();
+                    });
+        } finally {
+            deleteTelephonyCallFixture(fixture);
+        }
+    }
+
+    @Test
+    void permitsSanitizedCallEventsWithNullableAndDuplicateExternalIds() {
+        TelephonyCallFixture fixture = createTelephonyCallFixture();
+        UUID callSessionId = insertCallSession(
+                fixture.telephonyFixture().firstPbxId(),
+                fixture.directionId(),
+                genericTelephonyValue("CALL"));
+        String externalEventId = genericTelephonyValue("EVENT");
+        try {
+            insertCallEvent(
+                    callSessionId,
+                    externalEventId,
+                    fixture.eventTypeId(),
+                    "{\"kind\":\"generic\",\"safe\":true}");
+            insertCallEvent(
+                    callSessionId,
+                    externalEventId,
+                    fixture.eventTypeId(),
+                    "{\"kind\":\"generic-duplicate\"}");
+            insertCallEvent(callSessionId, null, fixture.eventTypeId(), null);
+
+            assertThat(jdbcTemplate.queryForObject(
+                            "SELECT count(*) FROM call_events WHERE call_session_id = ?",
+                            Integer.class,
+                            callSessionId))
+                    .isEqualTo(3);
+            assertThat(jdbcTemplate.queryForList(
+                            """
+                            SELECT sanitized_metadata ->> 'kind'
+                              FROM call_events
+                             WHERE call_session_id = ?
+                               AND external_event_id = ?
+                             ORDER BY sanitized_metadata ->> 'kind'
+                            """,
+                            String.class,
+                            callSessionId,
+                            externalEventId))
+                    .containsExactly("generic", "generic-duplicate");
+        } finally {
+            deleteTelephonyCallFixture(fixture);
+        }
+    }
+
+    @Test
+    void permitsNullableAndNonUniqueRecordingMetadata() {
+        TelephonyCallFixture fixture = createTelephonyCallFixture();
+        UUID callSessionId = insertCallSession(
+                fixture.telephonyFixture().firstPbxId(),
+                fixture.directionId(),
+                genericTelephonyValue("CALL"));
+        UUID storedFileId = insertGenericStoredFile(
+                fixture.telephonyFixture().organizationId(),
+                fixture.telephonyFixture().branchId());
+        String externalRecordingId = genericTelephonyValue("RECORDING");
+        try {
+            insertCallRecording(callSessionId, null, externalRecordingId, null);
+            insertCallRecording(
+                    callSessionId,
+                    storedFileId,
+                    externalRecordingId,
+                    "https://example.invalid/recordings/" + UUID.randomUUID());
+
+            List<Map<String, Object>> recordings = jdbcTemplate.queryForList(
+                    """
+                    SELECT stored_file_id, recording_url, duration_seconds
+                      FROM call_recordings
+                     WHERE call_session_id = ?
+                     ORDER BY stored_file_id NULLS FIRST
+                    """,
+                    callSessionId);
+            assertThat(recordings).hasSize(2);
+            assertThat(recordings.getFirst().get("stored_file_id")).isNull();
+            assertThat(recordings.getFirst().get("recording_url")).isNull();
+            assertThat(recordings)
+                    .allSatisfy(row -> assertThat(row.get("duration_seconds")).isNull());
+        } finally {
+            deleteTelephonyCallRows(fixture);
+            jdbcTemplate.update("DELETE FROM stored_files WHERE id = ?", storedFileId);
+            deleteTelephonyCallParents(fixture);
+        }
+    }
+
+    @Test
+    void enforcesCompositeLeadCallIdentityWhilePermittingApprovedCardinality() {
+        TelephonyCallFixture fixture = createTelephonyCallFixture();
+        LeadFixture firstLead = createLeadFixture();
+        LeadFixture secondLead = createLeadFixture();
+        UUID firstSessionId = insertCallSession(
+                fixture.telephonyFixture().firstPbxId(),
+                fixture.directionId(),
+                genericTelephonyValue("CALL"));
+        UUID secondSessionId = insertCallSession(
+                fixture.telephonyFixture().firstPbxId(),
+                fixture.directionId(),
+                genericTelephonyValue("CALL"));
+        try {
+            insertLeadCall(firstLead.leadId(), firstSessionId);
+            assertSqlState(
+                    "23505", () -> insertLeadCall(firstLead.leadId(), firstSessionId));
+            insertLeadCall(firstLead.leadId(), secondSessionId);
+            insertLeadCall(secondLead.leadId(), firstSessionId);
+
+            assertThat(jdbcTemplate.queryForObject(
+                            "SELECT count(*) FROM lead_calls WHERE lead_id = ?",
+                            Integer.class,
+                            firstLead.leadId()))
+                    .isEqualTo(2);
+            assertThat(jdbcTemplate.queryForObject(
+                            "SELECT count(*) FROM lead_calls WHERE call_session_id = ?",
+                            Integer.class,
+                            firstSessionId))
+                    .isEqualTo(2);
+            assertThat(jdbcTemplate.queryForObject(
+                            "SELECT count(*) FROM lead_calls WHERE linked_by IS NOT NULL",
+                            Integer.class))
+                    .isZero();
+        } finally {
+            deleteTelephonyCallRows(fixture);
+            deleteLeadFixture(firstLead);
+            deleteLeadFixture(secondLead);
+            deleteTelephonyCallParents(fixture);
+        }
+    }
+
+    @Test
+    void enforcesPbxScopedWebhookIdempotencyWithoutHashUniqueness() {
+        TelephonyCallFixture fixture = createTelephonyCallFixture();
+        String sharedExternalEventId = genericTelephonyValue("WEBHOOK");
+        String sharedPayloadHash = genericTelephonyValue("HASH");
+        try {
+            insertWebhookEvent(
+                    fixture.telephonyFixture().firstPbxId(),
+                    fixture.webhookStatusId(),
+                    sharedExternalEventId,
+                    sharedPayloadHash);
+            assertSqlState(
+                    "23505",
+                    () -> insertWebhookEvent(
+                            fixture.telephonyFixture().firstPbxId(),
+                            fixture.webhookStatusId(),
+                            sharedExternalEventId,
+                            genericTelephonyValue("HASH")));
+            insertWebhookEvent(
+                    fixture.telephonyFixture().secondPbxId(),
+                    fixture.webhookStatusId(),
+                    sharedExternalEventId,
+                    sharedPayloadHash);
+            insertWebhookEvent(
+                    fixture.telephonyFixture().firstPbxId(),
+                    fixture.webhookStatusId(),
+                    genericTelephonyValue("WEBHOOK"),
+                    sharedPayloadHash);
+            assertSqlState(
+                    "23502",
+                    () -> insertWebhookEvent(
+                            fixture.telephonyFixture().firstPbxId(),
+                            fixture.webhookStatusId(),
+                            genericTelephonyValue("WEBHOOK"),
+                            null));
+
+            assertThat(countRowsForPbx("webhook_events", fixture.telephonyFixture().firstPbxId()))
+                    .isEqualTo(2);
+            assertThat(countRowsForPbx("webhook_events", fixture.telephonyFixture().secondPbxId()))
+                    .isEqualTo(1);
+            assertThat(jdbcTemplate.queryForObject(
+                            "SELECT count(*) FROM webhook_events WHERE payload_hash = ?",
+                            Integer.class,
+                            sharedPayloadHash))
+                    .isEqualTo(3);
+            assertThat(jdbcTemplate.queryForObject(
+                            """
+                            SELECT count(*) FROM webhook_events
+                             WHERE processed_at IS NOT NULL OR error_message IS NOT NULL
+                            """,
+                            Integer.class))
+                    .isZero();
+        } finally {
+            deleteTelephonyCallFixture(fixture);
+        }
+    }
+
+    @Test
+    void rejectsSelectedTelephonyCallForeignKeyViolations() {
+        TelephonyCallFixture fixture = createTelephonyCallFixture();
+        LeadFixture leadFixture = createLeadFixture();
+        UUID callSessionId = insertCallSession(
+                fixture.telephonyFixture().firstPbxId(),
+                fixture.directionId(),
+                genericTelephonyValue("CALL"));
+        try {
+            assertSqlState(
+                    "23503",
+                    () -> insertCallSession(
+                            UUID.randomUUID(), fixture.directionId(), genericTelephonyValue("CALL")));
+            assertSqlState(
+                    "23503",
+                    () -> insertCallSession(
+                            fixture.telephonyFixture().firstPbxId(),
+                            UUID.randomUUID(),
+                            genericTelephonyValue("CALL")));
+            assertSqlState(
+                    "23503", () -> insertCallParticipant(UUID.randomUUID(), "CALLER"));
+            assertSqlState(
+                    "23503",
+                    () -> insertCallEvent(
+                            callSessionId,
+                            genericTelephonyValue("EVENT"),
+                            UUID.randomUUID(),
+                            null));
+            assertSqlState(
+                    "23503",
+                    () -> insertCallRecording(
+                            callSessionId, UUID.randomUUID(), null, null));
+            assertSqlState(
+                    "23503", () -> insertLeadCall(UUID.randomUUID(), callSessionId));
+            assertSqlState(
+                    "23503", () -> insertLeadCall(leadFixture.leadId(), UUID.randomUUID()));
+            assertSqlState(
+                    "23503",
+                    () -> insertWebhookEvent(
+                            fixture.telephonyFixture().firstPbxId(),
+                            UUID.randomUUID(),
+                            genericTelephonyValue("WEBHOOK"),
+                            genericTelephonyValue("HASH")));
+        } finally {
+            deleteTelephonyCallRows(fixture);
+            deleteLeadFixture(leadFixture);
+            deleteTelephonyCallParents(fixture);
         }
     }
 
@@ -2639,7 +3238,8 @@ class DatabaseInfrastructureIntegrationTest {
 
     private int countRowsForPbx(String tableName, UUID pbxConfigId) {
         String validatedTable = switch (tableName) {
-            case "extensions", "sip_accounts", "phone_numbers" -> tableName;
+            case "extensions", "sip_accounts", "phone_numbers", "call_sessions", "webhook_events" ->
+                tableName;
             default -> throw new IllegalArgumentException("Unexpected PBX child table: " + tableName);
         };
         return jdbcTemplate.queryForObject(
@@ -2671,6 +3271,213 @@ class DatabaseInfrastructureIntegrationTest {
                 fixture.secondPbxId());
         jdbcTemplate.update("DELETE FROM branches WHERE id = ?", fixture.branchId());
         deleteOrganization(fixture.organizationId());
+    }
+
+    private TelephonyCallFixture createTelephonyCallFixture() {
+        TelephonyFixture telephonyFixture = createTelephonyFixture();
+        UUID directionId = insertTelephonyReferenceReturningId("call_directions");
+        UUID eventTypeId = insertTelephonyReferenceReturningId("call_event_types");
+        UUID webhookStatusId = insertTelephonyReferenceReturningId("webhook_statuses");
+        return new TelephonyCallFixture(
+                telephonyFixture, directionId, eventTypeId, webhookStatusId);
+    }
+
+    private UUID insertTelephonyReferenceReturningId(String tableName) {
+        UUID referenceId = UUID.randomUUID();
+        jdbcTemplate.update(
+                "INSERT INTO "
+                        + validatedTelephonyReferenceTable(tableName)
+                        + " (id, code, name) VALUES (?, ?, 'Generic reference')",
+                referenceId,
+                genericTelephonyValue("REF"));
+        return referenceId;
+    }
+
+    private UUID insertCallSession(UUID pbxConfigId, UUID directionId, String externalCallId) {
+        UUID callSessionId = UUID.randomUUID();
+        jdbcTemplate.update(
+                """
+                INSERT INTO call_sessions (
+                    id, pbx_config_id, external_call_id, direction_id,
+                    from_normalized_number, to_normalized_number, started_at, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """,
+                callSessionId,
+                pbxConfigId,
+                externalCallId,
+                directionId,
+                genericTelephonyValue("FROM"),
+                genericTelephonyValue("TO"));
+        return callSessionId;
+    }
+
+    private UUID insertApplicationInvalidCallSession(UUID pbxConfigId, UUID directionId) {
+        UUID callSessionId = UUID.randomUUID();
+        jdbcTemplate.update(
+                """
+                INSERT INTO call_sessions (
+                    id, pbx_config_id, external_call_id, direction_id,
+                    from_normalized_number, to_normalized_number, started_at,
+                    answered_at, ended_at, duration_seconds, created_at)
+                VALUES (
+                    ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP,
+                    CURRENT_TIMESTAMP - INTERVAL '1 hour',
+                    CURRENT_TIMESTAMP - INTERVAL '2 hours', -1, CURRENT_TIMESTAMP)
+                """,
+                callSessionId,
+                pbxConfigId,
+                genericTelephonyValue("CALL"),
+                directionId,
+                genericTelephonyValue("FROM"),
+                genericTelephonyValue("TO"));
+        return callSessionId;
+    }
+
+    private void insertCallParticipant(UUID callSessionId, String participantRole) {
+        jdbcTemplate.update(
+                """
+                INSERT INTO call_participants (id, call_session_id, participant_role)
+                VALUES (?, ?, ?)
+                """,
+                UUID.randomUUID(),
+                callSessionId,
+                participantRole);
+    }
+
+    private void insertCallEvent(
+            UUID callSessionId, String externalEventId, UUID eventTypeId, String sanitizedMetadata) {
+        jdbcTemplate.update(
+                """
+                INSERT INTO call_events (
+                    id, call_session_id, external_event_id, event_type_id,
+                    occurred_at, sanitized_metadata, created_at)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CAST(? AS JSONB), CURRENT_TIMESTAMP)
+                """,
+                UUID.randomUUID(),
+                callSessionId,
+                externalEventId,
+                eventTypeId,
+                sanitizedMetadata);
+    }
+
+    private void insertCallRecording(
+            UUID callSessionId, UUID storedFileId, String externalRecordingId, String recordingUrl) {
+        jdbcTemplate.update(
+                """
+                INSERT INTO call_recordings (
+                    id, call_session_id, stored_file_id, external_recording_id,
+                    recording_url, created_at)
+                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """,
+                UUID.randomUUID(),
+                callSessionId,
+                storedFileId,
+                externalRecordingId,
+                recordingUrl);
+    }
+
+    private UUID insertGenericStoredFile(UUID organizationId, UUID branchId) {
+        UUID storedFileId = UUID.randomUUID();
+        jdbcTemplate.update(
+                """
+                INSERT INTO stored_files (
+                    id, organization_id, branch_id, storage_provider, bucket_name,
+                    object_key, original_file_name, content_type, file_size, uploaded_at)
+                VALUES (
+                    ?, ?, ?, 'TEST_ONLY', 'generic-test-bucket', ?,
+                    'generic-recording.bin', 'application/octet-stream', 0, CURRENT_TIMESTAMP)
+                """,
+                storedFileId,
+                organizationId,
+                branchId,
+                "generic-object-" + storedFileId);
+        return storedFileId;
+    }
+
+    private void insertLeadCall(UUID leadId, UUID callSessionId) {
+        jdbcTemplate.update(
+                """
+                INSERT INTO lead_calls (lead_id, call_session_id, linked_at)
+                VALUES (?, ?, CURRENT_TIMESTAMP)
+                """,
+                leadId,
+                callSessionId);
+    }
+
+    private void insertWebhookEvent(
+            UUID pbxConfigId,
+            UUID statusId,
+            String externalEventId,
+            String payloadHash) {
+        jdbcTemplate.update(
+                """
+                INSERT INTO webhook_events (
+                    id, pbx_config_id, external_event_id, status_id,
+                    payload_hash, received_at)
+                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """,
+                UUID.randomUUID(),
+                pbxConfigId,
+                externalEventId,
+                statusId,
+                payloadHash);
+    }
+
+    private void deleteTelephonyCallFixture(TelephonyCallFixture fixture) {
+        deleteTelephonyCallRows(fixture);
+        deleteTelephonyCallParents(fixture);
+    }
+
+    private void deleteTelephonyCallRows(TelephonyCallFixture fixture) {
+        UUID firstPbxId = fixture.telephonyFixture().firstPbxId();
+        UUID secondPbxId = fixture.telephonyFixture().secondPbxId();
+        jdbcTemplate.update(
+                """
+                DELETE FROM lead_calls
+                 WHERE call_session_id IN (
+                     SELECT id FROM call_sessions WHERE pbx_config_id IN (?, ?))
+                """,
+                firstPbxId,
+                secondPbxId);
+        jdbcTemplate.update(
+                """
+                DELETE FROM call_participants
+                 WHERE call_session_id IN (
+                     SELECT id FROM call_sessions WHERE pbx_config_id IN (?, ?))
+                """,
+                firstPbxId,
+                secondPbxId);
+        jdbcTemplate.update(
+                """
+                DELETE FROM call_events
+                 WHERE call_session_id IN (
+                     SELECT id FROM call_sessions WHERE pbx_config_id IN (?, ?))
+                """,
+                firstPbxId,
+                secondPbxId);
+        jdbcTemplate.update(
+                """
+                DELETE FROM call_recordings
+                 WHERE call_session_id IN (
+                     SELECT id FROM call_sessions WHERE pbx_config_id IN (?, ?))
+                """,
+                firstPbxId,
+                secondPbxId);
+        jdbcTemplate.update(
+                "DELETE FROM call_sessions WHERE pbx_config_id IN (?, ?)",
+                firstPbxId,
+                secondPbxId);
+        jdbcTemplate.update(
+                "DELETE FROM webhook_events WHERE pbx_config_id IN (?, ?)",
+                firstPbxId,
+                secondPbxId);
+    }
+
+    private void deleteTelephonyCallParents(TelephonyCallFixture fixture) {
+        jdbcTemplate.update("DELETE FROM call_directions WHERE id = ?", fixture.directionId());
+        jdbcTemplate.update("DELETE FROM call_event_types WHERE id = ?", fixture.eventTypeId());
+        jdbcTemplate.update("DELETE FROM webhook_statuses WHERE id = ?", fixture.webhookStatusId());
+        deleteTelephonyFixture(fixture.telephonyFixture());
     }
 
     private WorkflowFixture createWorkflowFixture() {
@@ -3246,6 +4053,183 @@ class DatabaseInfrastructureIntegrationTest {
                         "uk_phone_numbers_pbx_normalized_number",
                         true,
                         "pbx_config_id,normalized_number"));
+    }
+
+    private List<ColumnMetadata> expectedTelephonyCallColumns() {
+        return """
+                call_sessions|id|uuid||false|
+                call_sessions|pbx_config_id|uuid||false|
+                call_sessions|external_call_id|character varying|150|false|
+                call_sessions|direction_id|uuid||false|
+                call_sessions|disposition_id|uuid||true|
+                call_sessions|from_normalized_number|character varying|32|false|
+                call_sessions|to_normalized_number|character varying|32|false|
+                call_sessions|started_at|timestamp with time zone||false|
+                call_sessions|answered_at|timestamp with time zone||true|
+                call_sessions|ended_at|timestamp with time zone||true|
+                call_sessions|duration_seconds|integer||false|0
+                call_sessions|created_at|timestamp with time zone||false|
+                call_participants|id|uuid||false|
+                call_participants|call_session_id|uuid||false|
+                call_participants|user_id|uuid||true|
+                call_participants|extension_id|uuid||true|
+                call_participants|normalized_phone|character varying|32|true|
+                call_participants|participant_role|character varying|50|false|
+                call_participants|joined_at|timestamp with time zone||true|
+                call_participants|left_at|timestamp with time zone||true|
+                call_events|id|uuid||false|
+                call_events|call_session_id|uuid||false|
+                call_events|external_event_id|character varying|150|true|
+                call_events|event_type_id|uuid||false|
+                call_events|occurred_at|timestamp with time zone||false|
+                call_events|sanitized_metadata|jsonb||true|
+                call_events|created_at|timestamp with time zone||false|
+                call_recordings|id|uuid||false|
+                call_recordings|call_session_id|uuid||false|
+                call_recordings|stored_file_id|uuid||true|
+                call_recordings|external_recording_id|character varying|150|true|
+                call_recordings|recording_url|character varying|1000|true|
+                call_recordings|duration_seconds|integer||true|
+                call_recordings|created_at|timestamp with time zone||false|
+                lead_calls|lead_id|uuid||false|
+                lead_calls|call_session_id|uuid||false|
+                lead_calls|linked_by|uuid||true|
+                lead_calls|linked_at|timestamp with time zone||false|
+                webhook_events|id|uuid||false|
+                webhook_events|pbx_config_id|uuid||false|
+                webhook_events|external_event_id|character varying|150|false|
+                webhook_events|status_id|uuid||false|
+                webhook_events|payload_hash|character varying|128|false|
+                webhook_events|received_at|timestamp with time zone||false|
+                webhook_events|processed_at|timestamp with time zone||true|
+                webhook_events|error_message|text||true|
+                """
+                .lines()
+                .map(String::strip)
+                .filter(line -> !line.isEmpty())
+                .map(line -> {
+                    String[] fields = line.split("\\|", -1);
+                    Integer length = fields[3].isEmpty() ? null : Integer.valueOf(fields[3]);
+                    String defaultValue = fields[5].isEmpty() ? null : fields[5];
+                    return new ColumnMetadata(
+                            fields[0],
+                            fields[1],
+                            fields[2],
+                            length,
+                            Boolean.parseBoolean(fields[4]),
+                            defaultValue);
+                })
+                .toList();
+    }
+
+    private List<KeyMetadata> expectedTelephonyCallKeys() {
+        return List.of(
+                key("call_sessions", "PRIMARY KEY", "id", false),
+                key(
+                        "call_sessions",
+                        "UNIQUE",
+                        "pbx_config_id,external_call_id",
+                        false),
+                key("call_participants", "PRIMARY KEY", "id", false),
+                key("call_events", "PRIMARY KEY", "id", false),
+                key("call_recordings", "PRIMARY KEY", "id", false),
+                key("lead_calls", "PRIMARY KEY", "lead_id,call_session_id", false),
+                key("webhook_events", "PRIMARY KEY", "id", false),
+                key(
+                        "webhook_events",
+                        "UNIQUE",
+                        "pbx_config_id,external_event_id",
+                        false));
+    }
+
+    private List<IndexMetadata> expectedTelephonyCallIndexes() {
+        return List.of(
+                index(
+                        "call_sessions",
+                        "uk_call_sessions_pbx_external_call_id",
+                        true,
+                        "pbx_config_id,external_call_id"),
+                index("call_sessions", "idx_call_sessions_direction_id", false, "direction_id"),
+                index(
+                        "call_sessions",
+                        "idx_call_sessions_disposition_id",
+                        false,
+                        "disposition_id"),
+                index(
+                        "call_sessions",
+                        "idx_call_sessions_from_normalized_number",
+                        false,
+                        "from_normalized_number"),
+                index(
+                        "call_sessions",
+                        "idx_call_sessions_to_normalized_number",
+                        false,
+                        "to_normalized_number"),
+                index("call_sessions", "idx_call_sessions_started_at", false, "started_at"),
+                index(
+                        "call_participants",
+                        "idx_call_participants_call_session_id",
+                        false,
+                        "call_session_id"),
+                index("call_participants", "idx_call_participants_user_id", false, "user_id"),
+                index(
+                        "call_participants",
+                        "idx_call_participants_extension_id",
+                        false,
+                        "extension_id"),
+                index(
+                        "call_participants",
+                        "idx_call_participants_normalized_phone",
+                        false,
+                        "normalized_phone"),
+                index("call_events", "idx_call_events_call_session_id", false, "call_session_id"),
+                index("call_events", "idx_call_events_external_event_id", false, "external_event_id"),
+                index("call_events", "idx_call_events_event_type_id", false, "event_type_id"),
+                index("call_events", "idx_call_events_occurred_at", false, "occurred_at"),
+                index(
+                        "call_recordings",
+                        "idx_call_recordings_call_session_id",
+                        false,
+                        "call_session_id"),
+                index(
+                        "call_recordings",
+                        "idx_call_recordings_stored_file_id",
+                        false,
+                        "stored_file_id"),
+                index(
+                        "call_recordings",
+                        "idx_call_recordings_external_recording_id",
+                        false,
+                        "external_recording_id"),
+                index("lead_calls", "idx_lead_calls_call_session_id", false, "call_session_id"),
+                index("lead_calls", "idx_lead_calls_linked_by", false, "linked_by"),
+                index(
+                        "webhook_events",
+                        "uk_webhook_events_pbx_external_event_id",
+                        true,
+                        "pbx_config_id,external_event_id"),
+                index("webhook_events", "idx_webhook_events_status_id", false, "status_id"),
+                index("webhook_events", "idx_webhook_events_received_at", false, "received_at"),
+                index("webhook_events", "idx_webhook_events_payload_hash", false, "payload_hash"));
+    }
+
+    private List<ForeignKeyMetadata> expectedTelephonyCallForeignKeys() {
+        return List.of(
+                restrictedForeignKey("call_sessions", "pbx_config_id", "pbx_configs"),
+                restrictedForeignKey("call_sessions", "direction_id", "call_directions"),
+                restrictedForeignKey("call_sessions", "disposition_id", "call_dispositions"),
+                restrictedForeignKey("call_participants", "call_session_id", "call_sessions"),
+                restrictedForeignKey("call_participants", "user_id", "users"),
+                restrictedForeignKey("call_participants", "extension_id", "extensions"),
+                restrictedForeignKey("call_events", "call_session_id", "call_sessions"),
+                restrictedForeignKey("call_events", "event_type_id", "call_event_types"),
+                restrictedForeignKey("call_recordings", "call_session_id", "call_sessions"),
+                restrictedForeignKey("call_recordings", "stored_file_id", "stored_files"),
+                restrictedForeignKey("lead_calls", "lead_id", "leads"),
+                restrictedForeignKey("lead_calls", "call_session_id", "call_sessions"),
+                restrictedForeignKey("lead_calls", "linked_by", "users"),
+                restrictedForeignKey("webhook_events", "pbx_config_id", "pbx_configs"),
+                restrictedForeignKey("webhook_events", "status_id", "webhook_statuses"));
     }
 
     private List<ColumnMetadata> expectedCrmWorkflowColumns() {
@@ -3950,7 +4934,22 @@ class DatabaseInfrastructureIntegrationTest {
                 restrictedForeignKey("extensions", "user_id", "users"),
                 restrictedForeignKey("sip_accounts", "pbx_config_id", "pbx_configs"),
                 restrictedForeignKey("sip_accounts", "extension_id", "extensions"),
-                restrictedForeignKey("phone_numbers", "pbx_config_id", "pbx_configs"));
+                restrictedForeignKey("phone_numbers", "pbx_config_id", "pbx_configs"),
+                restrictedForeignKey("call_sessions", "pbx_config_id", "pbx_configs"),
+                restrictedForeignKey("call_sessions", "direction_id", "call_directions"),
+                restrictedForeignKey("call_sessions", "disposition_id", "call_dispositions"),
+                restrictedForeignKey("call_participants", "call_session_id", "call_sessions"),
+                restrictedForeignKey("call_participants", "user_id", "users"),
+                restrictedForeignKey("call_participants", "extension_id", "extensions"),
+                restrictedForeignKey("call_events", "call_session_id", "call_sessions"),
+                restrictedForeignKey("call_events", "event_type_id", "call_event_types"),
+                restrictedForeignKey("call_recordings", "call_session_id", "call_sessions"),
+                restrictedForeignKey("call_recordings", "stored_file_id", "stored_files"),
+                restrictedForeignKey("lead_calls", "lead_id", "leads"),
+                restrictedForeignKey("lead_calls", "call_session_id", "call_sessions"),
+                restrictedForeignKey("lead_calls", "linked_by", "users"),
+                restrictedForeignKey("webhook_events", "pbx_config_id", "pbx_configs"),
+                restrictedForeignKey("webhook_events", "status_id", "webhook_statuses"));
     }
 
     private ForeignKeyMetadata restrictedForeignKey(
@@ -4033,6 +5032,12 @@ class DatabaseInfrastructureIntegrationTest {
 
     private record TelephonyFixture(
             UUID organizationId, UUID branchId, UUID firstPbxId, UUID secondPbxId) {}
+
+    private record TelephonyCallFixture(
+            TelephonyFixture telephonyFixture,
+            UUID directionId,
+            UUID eventTypeId,
+            UUID webhookStatusId) {}
 
     private record WorkflowFixture(
             LeadFixture leadFixture,
