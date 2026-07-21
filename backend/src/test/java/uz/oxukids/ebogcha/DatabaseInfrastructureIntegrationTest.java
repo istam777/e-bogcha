@@ -53,7 +53,7 @@ class DatabaseInfrastructureIntegrationTest {
     private ApplicationContext applicationContext;
 
     @Test
-    void appliesOnlyTheApprovedSchemasThroughV9() {
+    void appliesOnlyTheApprovedSchemasThroughV10() {
         Integer connectivityCheck = jdbcTemplate.queryForObject("SELECT 1", Integer.class);
         assertThat(connectivityCheck).isEqualTo(1);
 
@@ -64,7 +64,7 @@ class DatabaseInfrastructureIntegrationTest {
         assertThat(flyway.info().pending()).isEmpty();
         assertThat(flyway.info().applied())
                 .extracting(migration -> migration.getVersion().getVersion())
-                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9");
+                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10");
 
         List<String> foundationTables = jdbcTemplate.queryForList(
                 """
@@ -81,10 +81,14 @@ class DatabaseInfrastructureIntegrationTest {
                 "application_settings",
                 "audit_logs",
                 "branches",
+                "call_directions",
+                "call_dispositions",
+                "call_event_types",
                 "departments",
                 "document_types",
                 "document_verification_statuses",
                 "employees",
+                "extensions",
                 "gender_types",
                 "languages",
                 "lead_activities",
@@ -103,13 +107,16 @@ class DatabaseInfrastructureIntegrationTest {
                 "nationalities",
                 "number_sequences",
                 "organizations",
+                "pbx_configs",
                 "permissions",
+                "phone_numbers",
                 "positions",
                 "prospective_children",
                 "refresh_tokens",
                 "relationship_types",
                 "role_permissions",
                 "roles",
+                "sip_accounts",
                 "stored_files",
                 "tour_outcomes",
                 "tours",
@@ -117,7 +124,8 @@ class DatabaseInfrastructureIntegrationTest {
                 "user_credentials",
                 "user_roles",
                 "user_statuses",
-                "users");
+                "users",
+                "webhook_statuses");
 
         List<String> crmReferenceTables = jdbcTemplate.queryForList(
                 """
@@ -170,16 +178,37 @@ class DatabaseInfrastructureIntegrationTest {
                 "lead_tasks",
                 "tours");
 
+        List<String> telephonyConfigurationTables = jdbcTemplate.queryForList(
+                """
+                SELECT table_name
+                  FROM information_schema.tables
+                 WHERE table_schema = 'public'
+                   AND table_name IN (
+                       'call_directions', 'call_dispositions', 'call_event_types',
+                       'webhook_statuses', 'pbx_configs', 'extensions',
+                       'sip_accounts', 'phone_numbers')
+                 ORDER BY table_name
+                """,
+                String.class);
+        assertThat(telephonyConfigurationTables).containsExactly(
+                "call_directions",
+                "call_dispositions",
+                "call_event_types",
+                "extensions",
+                "pbx_configs",
+                "phone_numbers",
+                "sip_accounts",
+                "webhook_statuses");
+
         Integer prohibitedTableCount = jdbcTemplate.queryForObject(
                 """
                 SELECT count(*)
                   FROM information_schema.tables
                  WHERE table_schema = 'public'
                    AND table_name IN (
-                       'pbx_configs', 'extensions', 'sip_accounts', 'phone_numbers',
                        'call_sessions', 'call_participants', 'call_events',
                        'call_recordings', 'lead_calls', 'webhook_events',
-                       'lead_conversions', 'children', 'admission_applications')
+                       'lead_conversions', 'children', 'admission_applications', 'contracts')
                 """,
                 Integer.class);
         assertThat(prohibitedTableCount).isZero();
@@ -220,6 +249,14 @@ class DatabaseInfrastructureIntegrationTest {
                      + (SELECT count(*) FROM lead_tasks)
                      + (SELECT count(*) FROM tours)
                      + (SELECT count(*) FROM lead_duplicates)
+                     + (SELECT count(*) FROM call_directions)
+                     + (SELECT count(*) FROM call_dispositions)
+                     + (SELECT count(*) FROM call_event_types)
+                     + (SELECT count(*) FROM webhook_statuses)
+                     + (SELECT count(*) FROM pbx_configs)
+                     + (SELECT count(*) FROM extensions)
+                     + (SELECT count(*) FROM sip_accounts)
+                     + (SELECT count(*) FROM phone_numbers)
                 """,
                 Integer.class);
         assertThat(unseededReferenceRowCount).isZero();
@@ -281,7 +318,10 @@ class DatabaseInfrastructureIntegrationTest {
                        'lead_task_statuses', 'lead_activity_types', 'leads',
                        'lead_phones', 'prospective_children', 'lead_assignments',
                        'lead_status_history', 'lead_activities', 'lead_notes',
-                       'lead_tasks', 'tours', 'lead_duplicates')
+                       'lead_tasks', 'tours', 'lead_duplicates', 'pbx_configs',
+                       'extensions', 'sip_accounts', 'phone_numbers',
+                       'call_directions', 'call_dispositions', 'call_event_types',
+                       'webhook_statuses')
                 """,
                 (resultSet, rowNumber) -> new ForeignKeyMetadata(
                         resultSet.getString("source_table"),
@@ -339,7 +379,8 @@ class DatabaseInfrastructureIntegrationTest {
                        'lead_task_statuses', 'lead_activity_types', 'leads',
                        'lead_phones', 'prospective_children', 'lead_assignments',
                        'lead_status_history', 'lead_activities', 'lead_notes',
-                       'lead_tasks', 'tours', 'lead_duplicates')
+                       'lead_tasks', 'tours', 'lead_duplicates', 'pbx_configs',
+                       'extensions', 'sip_accounts', 'phone_numbers')
                 """,
                 (resultSet, rowNumber) -> new ForeignKeyIndexCoverage(
                         resultSet.getString("source_table"),
@@ -463,7 +504,10 @@ class DatabaseInfrastructureIntegrationTest {
                        'lead_task_statuses', 'lead_activity_types', 'leads',
                        'lead_phones', 'prospective_children', 'lead_assignments',
                        'lead_status_history', 'lead_activities', 'lead_notes',
-                       'lead_tasks', 'tours', 'lead_duplicates')
+                       'lead_tasks', 'tours', 'lead_duplicates', 'pbx_configs',
+                       'extensions', 'sip_accounts', 'phone_numbers',
+                       'call_directions', 'call_dispositions', 'call_event_types',
+                       'webhook_statuses')
                 """,
                 (resultSet, rowNumber) -> new ConstraintCounts(
                         resultSet.getInt("primary_keys"),
@@ -471,7 +515,7 @@ class DatabaseInfrastructureIntegrationTest {
                         resultSet.getInt("foreign_keys"),
                         resultSet.getInt("check_constraints")));
 
-        assertThat(constraintCounts).isEqualTo(new ConstraintCounts(40, 28, 76, 1));
+        assertThat(constraintCounts).isEqualTo(new ConstraintCounts(48, 35, 83, 1));
     }
 
     @Test
@@ -733,13 +777,20 @@ class DatabaseInfrastructureIntegrationTest {
                        'tour_outcomes', 'lead_task_statuses', 'lead_activity_types',
                        'leads', 'lead_phones', 'prospective_children',
                        'lead_assignments', 'lead_status_history', 'lead_activities',
-                       'lead_notes', 'lead_tasks', 'tours', 'lead_duplicates')
+                       'lead_notes', 'lead_tasks', 'tours', 'lead_duplicates',
+                       'call_directions', 'call_dispositions', 'call_event_types',
+                       'webhook_statuses', 'pbx_configs', 'extensions',
+                       'sip_accounts', 'phone_numbers')
                  ORDER BY table_name
                 """,
                 (resultSet, rowNumber) -> new ColumnDefaultMetadata(
                         resultSet.getString("table_name"),
                         resultSet.getString("column_default")));
         assertThat(idColumns).containsExactly(
+                new ColumnDefaultMetadata("call_directions", null),
+                new ColumnDefaultMetadata("call_dispositions", null),
+                new ColumnDefaultMetadata("call_event_types", null),
+                new ColumnDefaultMetadata("extensions", null),
                 new ColumnDefaultMetadata("lead_activities", null),
                 new ColumnDefaultMetadata("lead_activity_types", null),
                 new ColumnDefaultMetadata("lead_assignments", null),
@@ -753,9 +804,13 @@ class DatabaseInfrastructureIntegrationTest {
                 new ColumnDefaultMetadata("lead_tasks", null),
                 new ColumnDefaultMetadata("leads", null),
                 new ColumnDefaultMetadata("lost_reasons", null),
+                new ColumnDefaultMetadata("pbx_configs", null),
+                new ColumnDefaultMetadata("phone_numbers", null),
                 new ColumnDefaultMetadata("prospective_children", null),
+                new ColumnDefaultMetadata("sip_accounts", null),
                 new ColumnDefaultMetadata("tour_outcomes", null),
-                new ColumnDefaultMetadata("tours", null));
+                new ColumnDefaultMetadata("tours", null),
+                new ColumnDefaultMetadata("webhook_statuses", null));
 
         List<String> uuidExtensions = jdbcTemplate.queryForList(
                 "SELECT extname FROM pg_extension WHERE extname IN ('pgcrypto', 'uuid-ossp')",
@@ -1237,6 +1292,270 @@ class DatabaseInfrastructureIntegrationTest {
                 "ux_lead_assignments_active_lead",
                 "ux_lead_phones_primary_lead",
                 "ux_user_roles_current_assignment");
+    }
+
+    @Test
+    void definesExactTelephonyConfigurationColumnMetadata() {
+        List<ColumnMetadata> actualColumns = jdbcTemplate.query(
+                """
+                SELECT table_name,
+                       column_name,
+                       data_type,
+                       character_maximum_length,
+                       is_nullable,
+                       column_default
+                  FROM information_schema.columns
+                 WHERE table_schema = 'public'
+                   AND table_name IN (
+                       'call_directions', 'call_dispositions', 'call_event_types',
+                       'webhook_statuses', 'pbx_configs', 'extensions',
+                       'sip_accounts', 'phone_numbers')
+                """,
+                (resultSet, rowNumber) -> new ColumnMetadata(
+                        resultSet.getString("table_name"),
+                        resultSet.getString("column_name"),
+                        resultSet.getString("data_type"),
+                        resultSet.getObject("character_maximum_length", Integer.class),
+                        "YES".equals(resultSet.getString("is_nullable")),
+                        resultSet.getString("column_default")));
+        assertThat(actualColumns)
+                .containsExactlyInAnyOrderElementsOf(expectedTelephonyConfigurationColumns());
+    }
+
+    @Test
+    void definesExactTelephonyConfigurationKeysAndConstraintCounts() {
+        List<KeyMetadata> actualKeys = jdbcTemplate.query(
+                """
+                SELECT table_relation.relname AS table_name,
+                       CASE constraint_definition.contype
+                           WHEN 'p' THEN 'PRIMARY KEY'
+                           WHEN 'u' THEN 'UNIQUE'
+                       END AS key_type,
+                       string_agg(attribute.attname, ',' ORDER BY key_position.ordinality)
+                           AS key_columns,
+                       index_definition.indnullsnotdistinct,
+                       access_method.amname AS access_method
+                  FROM pg_constraint constraint_definition
+                  JOIN pg_class table_relation
+                    ON table_relation.oid = constraint_definition.conrelid
+                  JOIN pg_namespace table_schema
+                    ON table_schema.oid = table_relation.relnamespace
+                  JOIN pg_index index_definition
+                    ON index_definition.indexrelid = constraint_definition.conindid
+                  JOIN pg_class index_relation
+                    ON index_relation.oid = index_definition.indexrelid
+                  JOIN pg_am access_method
+                    ON access_method.oid = index_relation.relam
+                  JOIN LATERAL unnest(constraint_definition.conkey) WITH ORDINALITY
+                       AS key_position(attribute_number, ordinality) ON TRUE
+                  JOIN pg_attribute attribute
+                    ON attribute.attrelid = table_relation.oid
+                   AND attribute.attnum = key_position.attribute_number
+                 WHERE table_schema.nspname = 'public'
+                   AND constraint_definition.contype IN ('p', 'u')
+                   AND table_relation.relname IN (
+                       'call_directions', 'call_dispositions', 'call_event_types',
+                       'webhook_statuses', 'pbx_configs', 'extensions',
+                       'sip_accounts', 'phone_numbers')
+                 GROUP BY table_relation.relname,
+                          constraint_definition.oid,
+                          constraint_definition.contype,
+                          index_definition.indnullsnotdistinct,
+                          access_method.amname
+                """,
+                (resultSet, rowNumber) -> new KeyMetadata(
+                        resultSet.getString("table_name"),
+                        resultSet.getString("key_type"),
+                        resultSet.getString("key_columns"),
+                        resultSet.getBoolean("indnullsnotdistinct"),
+                        resultSet.getString("access_method")));
+        assertThat(actualKeys)
+                .containsExactlyInAnyOrderElementsOf(expectedTelephonyConfigurationKeys());
+
+        ConstraintCounts counts = jdbcTemplate.queryForObject(
+                """
+                SELECT count(*) FILTER (WHERE constraint_definition.contype = 'p') AS primary_keys,
+                       count(*) FILTER (WHERE constraint_definition.contype = 'u') AS unique_constraints,
+                       count(*) FILTER (WHERE constraint_definition.contype = 'f') AS foreign_keys,
+                       count(*) FILTER (WHERE constraint_definition.contype = 'c') AS check_constraints
+                  FROM pg_constraint constraint_definition
+                  JOIN pg_class table_relation
+                    ON table_relation.oid = constraint_definition.conrelid
+                  JOIN pg_namespace table_schema
+                    ON table_schema.oid = table_relation.relnamespace
+                 WHERE table_schema.nspname = 'public'
+                   AND table_relation.relname IN (
+                       'call_directions', 'call_dispositions', 'call_event_types',
+                       'webhook_statuses', 'pbx_configs', 'extensions',
+                       'sip_accounts', 'phone_numbers')
+                """,
+                (resultSet, rowNumber) -> new ConstraintCounts(
+                        resultSet.getInt("primary_keys"),
+                        resultSet.getInt("unique_constraints"),
+                        resultSet.getInt("foreign_keys"),
+                        resultSet.getInt("check_constraints")));
+        assertThat(counts).isEqualTo(new ConstraintCounts(8, 7, 7, 0));
+    }
+
+    @Test
+    void definesExactTelephonyConfigurationIndexInventory() {
+        List<IndexMetadata> indexes = jdbcTemplate.query(
+                """
+                SELECT table_relation.relname AS table_name,
+                       index_relation.relname AS index_name,
+                       index_definition.indisunique,
+                       index_definition.indnullsnotdistinct,
+                       access_method.amname AS access_method,
+                       index_definition.indisvalid,
+                       index_definition.indisready,
+                       index_definition.indpred IS NOT NULL AS partial,
+                       string_agg(attribute.attname, ',' ORDER BY key_position.position)
+                           AS key_columns
+                  FROM pg_index index_definition
+                  JOIN pg_class index_relation
+                    ON index_relation.oid = index_definition.indexrelid
+                  JOIN pg_class table_relation
+                    ON table_relation.oid = index_definition.indrelid
+                  JOIN pg_namespace table_schema
+                    ON table_schema.oid = table_relation.relnamespace
+                  JOIN pg_am access_method
+                    ON access_method.oid = index_relation.relam
+                  JOIN LATERAL generate_series(0, index_definition.indnkeyatts - 1)
+                       AS key_position(position) ON TRUE
+                  JOIN pg_attribute attribute
+                    ON attribute.attrelid = table_relation.oid
+                   AND attribute.attnum = index_definition.indkey[key_position.position]
+                 WHERE table_schema.nspname = 'public'
+                   AND table_relation.relname IN (
+                       'call_directions', 'call_dispositions', 'call_event_types',
+                       'webhook_statuses', 'pbx_configs', 'extensions',
+                       'sip_accounts', 'phone_numbers')
+                   AND NOT index_definition.indisprimary
+                 GROUP BY table_relation.relname,
+                          index_relation.relname,
+                          index_definition.indisunique,
+                          index_definition.indnullsnotdistinct,
+                          access_method.amname,
+                          index_definition.indisvalid,
+                          index_definition.indisready,
+                          index_definition.indpred
+                """,
+                (resultSet, rowNumber) -> new IndexMetadata(
+                        resultSet.getString("table_name"),
+                        resultSet.getString("index_name"),
+                        resultSet.getBoolean("indisunique"),
+                        resultSet.getBoolean("indnullsnotdistinct"),
+                        resultSet.getString("access_method"),
+                        resultSet.getBoolean("indisvalid"),
+                        resultSet.getBoolean("indisready"),
+                        resultSet.getBoolean("partial"),
+                        resultSet.getString("key_columns")));
+        assertThat(indexes)
+                .containsExactlyInAnyOrderElementsOf(expectedTelephonyConfigurationIndexes());
+    }
+
+    @Test
+    void enforcesGlobalTelephonyReferenceCodeUniqueness() {
+        for (String tableName : telephonyReferenceTables()) {
+            String firstCode = genericTelephonyValue("CODE");
+            String secondCode = genericTelephonyValue("CODE");
+            try {
+                insertTelephonyReference(tableName, firstCode);
+                assertSqlState(
+                        "23505", () -> insertTelephonyReference(tableName, firstCode));
+                insertTelephonyReference(tableName, secondCode);
+
+                assertThat(countTelephonyReferences(tableName, firstCode, secondCode)).isEqualTo(2);
+            } finally {
+                deleteTelephonyReferences(tableName, firstCode, secondCode);
+            }
+        }
+    }
+
+    @Test
+    void enforcesExactPbxScopedExtensionSipAndPhoneIdentities() {
+        TelephonyFixture fixture = createTelephonyFixture();
+        String sharedExtension = genericTelephonyValue("EXT");
+        String sharedSipUsername = genericTelephonyValue("SIP");
+        String sharedNumber = genericTelephonyValue("NUMBER");
+        try {
+            UUID firstExtensionId = insertExtension(fixture.firstPbxId(), sharedExtension);
+            assertSqlState(
+                    "23505", () -> insertExtension(fixture.firstPbxId(), sharedExtension));
+            UUID secondExtensionId = insertExtension(fixture.secondPbxId(), sharedExtension);
+            UUID additionalExtensionId = insertExtension(
+                    fixture.firstPbxId(), genericTelephonyValue("EXT"));
+
+            insertSipAccount(fixture.firstPbxId(), firstExtensionId, sharedSipUsername);
+            assertSqlState(
+                    "23505",
+                    () -> insertSipAccount(
+                            fixture.firstPbxId(), additionalExtensionId, sharedSipUsername));
+            insertSipAccount(fixture.secondPbxId(), secondExtensionId, sharedSipUsername);
+            insertSipAccount(
+                    fixture.firstPbxId(), firstExtensionId, genericTelephonyValue("SIP"));
+
+            insertPhoneNumber(fixture.firstPbxId(), sharedNumber);
+            assertSqlState(
+                    "23505", () -> insertPhoneNumber(fixture.firstPbxId(), sharedNumber));
+            insertPhoneNumber(fixture.secondPbxId(), sharedNumber);
+            insertPhoneNumber(fixture.firstPbxId(), genericTelephonyValue("NUMBER"));
+
+            assertThat(countRowsForPbx("extensions", fixture.firstPbxId())).isEqualTo(2);
+            assertThat(countRowsForPbx("extensions", fixture.secondPbxId())).isEqualTo(1);
+            assertThat(countRowsForPbx("sip_accounts", fixture.firstPbxId())).isEqualTo(2);
+            assertThat(countRowsForPbx("sip_accounts", fixture.secondPbxId())).isEqualTo(1);
+            assertThat(countRowsForPbx("phone_numbers", fixture.firstPbxId())).isEqualTo(2);
+            assertThat(countRowsForPbx("phone_numbers", fixture.secondPbxId())).isEqualTo(1);
+        } finally {
+            deleteTelephonyFixture(fixture);
+        }
+    }
+
+    @Test
+    void permitsMoreThanFourUnassignedExtensions() {
+        TelephonyFixture fixture = createTelephonyFixture();
+        try {
+            for (int extensionNumber = 1; extensionNumber <= 6; extensionNumber++) {
+                insertExtension(
+                        fixture.firstPbxId(),
+                        genericTelephonyValue("EXT" + extensionNumber));
+            }
+
+            assertThat(countRowsForPbx("extensions", fixture.firstPbxId())).isEqualTo(6);
+            Integer assignedExtensionCount = jdbcTemplate.queryForObject(
+                    "SELECT count(*) FROM extensions WHERE pbx_config_id = ? AND user_id IS NOT NULL",
+                    Integer.class,
+                    fixture.firstPbxId());
+            assertThat(assignedExtensionCount).isZero();
+        } finally {
+            deleteTelephonyFixture(fixture);
+        }
+    }
+
+    @Test
+    void rejectsSelectedTelephonyConfigurationForeignKeyViolations() {
+        TelephonyFixture fixture = createTelephonyFixture();
+        try {
+            assertSqlState("23503", () -> insertPbxConfig(UUID.randomUUID(), null));
+            assertSqlState(
+                    "23503", () -> insertExtension(UUID.randomUUID(), genericTelephonyValue("EXT")));
+            assertSqlState(
+                    "23503",
+                    () -> insertExtension(
+                            fixture.firstPbxId(), UUID.randomUUID(), genericTelephonyValue("EXT")));
+            assertSqlState(
+                    "23503",
+                    () -> insertSipAccount(
+                            fixture.firstPbxId(), UUID.randomUUID(), genericTelephonyValue("SIP")));
+            assertSqlState(
+                    "23503",
+                    () -> insertPhoneNumber(UUID.randomUUID(), genericTelephonyValue("NUMBER")));
+
+            assertThat(countRowsForPbx("extensions", fixture.firstPbxId())).isZero();
+        } finally {
+            deleteTelephonyFixture(fixture);
+        }
     }
 
     @Test
@@ -2201,6 +2520,159 @@ class DatabaseInfrastructureIntegrationTest {
         return new LeadFixture(organizationId, branchId, sourceId, statusId, leadId);
     }
 
+    private List<String> telephonyReferenceTables() {
+        return List.of(
+                "call_directions", "call_dispositions", "call_event_types", "webhook_statuses");
+    }
+
+    private void insertTelephonyReference(String tableName, String code) {
+        jdbcTemplate.update(
+                "INSERT INTO "
+                        + validatedTelephonyReferenceTable(tableName)
+                        + " (id, code, name) VALUES (?, ?, 'Generic reference')",
+                UUID.randomUUID(),
+                code);
+    }
+
+    private int countTelephonyReferences(
+            String tableName, String firstCode, String secondCode) {
+        return jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM "
+                        + validatedTelephonyReferenceTable(tableName)
+                        + " WHERE code IN (?, ?)",
+                Integer.class,
+                firstCode,
+                secondCode);
+    }
+
+    private void deleteTelephonyReferences(
+            String tableName, String firstCode, String secondCode) {
+        jdbcTemplate.update(
+                "DELETE FROM "
+                        + validatedTelephonyReferenceTable(tableName)
+                        + " WHERE code IN (?, ?)",
+                firstCode,
+                secondCode);
+    }
+
+    private String validatedTelephonyReferenceTable(String tableName) {
+        if (telephonyReferenceTables().contains(tableName)) {
+            return tableName;
+        }
+        throw new IllegalArgumentException("Unexpected telephony reference table: " + tableName);
+    }
+
+    private TelephonyFixture createTelephonyFixture() {
+        UUID organizationId = createOrganization();
+        UUID branchId = createBranch(organizationId);
+        UUID firstPbxId = insertPbxConfig(organizationId, branchId);
+        UUID secondPbxId = insertPbxConfig(organizationId, null);
+        return new TelephonyFixture(organizationId, branchId, firstPbxId, secondPbxId);
+    }
+
+    private UUID insertPbxConfig(UUID organizationId, UUID branchId) {
+        UUID pbxConfigId = UUID.randomUUID();
+        jdbcTemplate.update(
+                """
+                INSERT INTO pbx_configs (
+                    id, organization_id, branch_id, name, base_url,
+                    credential_secret_reference, created_at, updated_at)
+                VALUES (
+                    ?, ?, ?, 'Generic PBX configuration', ?, ?,
+                    CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """,
+                pbxConfigId,
+                organizationId,
+                branchId,
+                "https://example.invalid/pbx/" + pbxConfigId,
+                "external-secret-reference-" + pbxConfigId);
+        return pbxConfigId;
+    }
+
+    private UUID insertExtension(UUID pbxConfigId, String extensionNumber) {
+        return insertExtension(pbxConfigId, null, extensionNumber);
+    }
+
+    private UUID insertExtension(UUID pbxConfigId, UUID userId, String extensionNumber) {
+        UUID extensionId = UUID.randomUUID();
+        jdbcTemplate.update(
+                """
+                INSERT INTO extensions (
+                    id, pbx_config_id, user_id, extension_number, created_at, updated_at)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """,
+                extensionId,
+                pbxConfigId,
+                userId,
+                extensionNumber);
+        return extensionId;
+    }
+
+    private void insertSipAccount(UUID pbxConfigId, UUID extensionId, String sipUsername) {
+        UUID accountId = UUID.randomUUID();
+        jdbcTemplate.update(
+                """
+                INSERT INTO sip_accounts (
+                    id, pbx_config_id, extension_id, sip_username, secret_reference,
+                    created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """,
+                accountId,
+                pbxConfigId,
+                extensionId,
+                sipUsername,
+                "external-secret-reference-" + accountId);
+    }
+
+    private void insertPhoneNumber(UUID pbxConfigId, String normalizedNumber) {
+        jdbcTemplate.update(
+                """
+                INSERT INTO phone_numbers (
+                    id, pbx_config_id, normalized_number, display_number)
+                VALUES (?, ?, ?, ?)
+                """,
+                UUID.randomUUID(),
+                pbxConfigId,
+                normalizedNumber,
+                normalizedNumber);
+    }
+
+    private int countRowsForPbx(String tableName, UUID pbxConfigId) {
+        String validatedTable = switch (tableName) {
+            case "extensions", "sip_accounts", "phone_numbers" -> tableName;
+            default -> throw new IllegalArgumentException("Unexpected PBX child table: " + tableName);
+        };
+        return jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM " + validatedTable + " WHERE pbx_config_id = ?",
+                Integer.class,
+                pbxConfigId);
+    }
+
+    private String genericTelephonyValue(String prefix) {
+        return prefix + "_" + UUID.randomUUID().toString().replace("-", "").substring(0, 20);
+    }
+
+    private void deleteTelephonyFixture(TelephonyFixture fixture) {
+        jdbcTemplate.update(
+                "DELETE FROM phone_numbers WHERE pbx_config_id IN (?, ?)",
+                fixture.firstPbxId(),
+                fixture.secondPbxId());
+        jdbcTemplate.update(
+                "DELETE FROM sip_accounts WHERE pbx_config_id IN (?, ?)",
+                fixture.firstPbxId(),
+                fixture.secondPbxId());
+        jdbcTemplate.update(
+                "DELETE FROM extensions WHERE pbx_config_id IN (?, ?)",
+                fixture.firstPbxId(),
+                fixture.secondPbxId());
+        jdbcTemplate.update(
+                "DELETE FROM pbx_configs WHERE id IN (?, ?)",
+                fixture.firstPbxId(),
+                fixture.secondPbxId());
+        jdbcTemplate.update("DELETE FROM branches WHERE id = ?", fixture.branchId());
+        deleteOrganization(fixture.organizationId());
+    }
+
     private WorkflowFixture createWorkflowFixture() {
         LeadFixture leadFixture = createLeadFixture();
         UUID secondLeadId = UUID.randomUUID();
@@ -2658,6 +3130,122 @@ class DatabaseInfrastructureIntegrationTest {
         Throwable mostSpecificCause = exception.getMostSpecificCause();
         assertThat(mostSpecificCause).isInstanceOf(SQLException.class);
         assertThat(((SQLException) mostSpecificCause).getSQLState()).isEqualTo(expectedSqlState);
+    }
+
+    private List<ColumnMetadata> expectedTelephonyConfigurationColumns() {
+        return """
+                call_directions|id|uuid||false|
+                call_directions|code|character varying|30|false|
+                call_directions|name|character varying|80|false|
+                call_dispositions|id|uuid||false|
+                call_dispositions|code|character varying|50|false|
+                call_dispositions|name|character varying|100|false|
+                call_dispositions|is_missed|boolean||false|false
+                call_event_types|id|uuid||false|
+                call_event_types|code|character varying|50|false|
+                call_event_types|name|character varying|100|false|
+                webhook_statuses|id|uuid||false|
+                webhook_statuses|code|character varying|50|false|
+                webhook_statuses|name|character varying|100|false|
+                webhook_statuses|is_final|boolean||false|false
+                pbx_configs|id|uuid||false|
+                pbx_configs|organization_id|uuid||false|
+                pbx_configs|branch_id|uuid||true|
+                pbx_configs|name|character varying|120|false|
+                pbx_configs|base_url|character varying|500|false|
+                pbx_configs|credential_secret_reference|character varying|255|false|
+                pbx_configs|is_active|boolean||false|true
+                pbx_configs|created_at|timestamp with time zone||false|
+                pbx_configs|updated_at|timestamp with time zone||false|
+                extensions|id|uuid||false|
+                extensions|pbx_config_id|uuid||false|
+                extensions|user_id|uuid||true|
+                extensions|extension_number|character varying|30|false|
+                extensions|display_name|character varying|120|true|
+                extensions|is_active|boolean||false|true
+                extensions|created_at|timestamp with time zone||false|
+                extensions|updated_at|timestamp with time zone||false|
+                sip_accounts|id|uuid||false|
+                sip_accounts|pbx_config_id|uuid||false|
+                sip_accounts|extension_id|uuid||false|
+                sip_accounts|sip_username|character varying|120|false|
+                sip_accounts|secret_reference|character varying|255|false|
+                sip_accounts|is_active|boolean||false|true
+                sip_accounts|created_at|timestamp with time zone||false|
+                sip_accounts|updated_at|timestamp with time zone||false|
+                phone_numbers|id|uuid||false|
+                phone_numbers|pbx_config_id|uuid||false|
+                phone_numbers|normalized_number|character varying|32|false|
+                phone_numbers|display_number|character varying|50|false|
+                phone_numbers|is_primary|boolean||false|false
+                phone_numbers|is_active|boolean||false|true
+                """
+                .lines()
+                .map(String::strip)
+                .filter(line -> !line.isEmpty())
+                .map(line -> {
+                    String[] fields = line.split("\\|", -1);
+                    Integer length = fields[3].isEmpty() ? null : Integer.valueOf(fields[3]);
+                    String defaultValue = fields[5].isEmpty() ? null : fields[5];
+                    return new ColumnMetadata(
+                            fields[0],
+                            fields[1],
+                            fields[2],
+                            length,
+                            Boolean.parseBoolean(fields[4]),
+                            defaultValue);
+                })
+                .toList();
+    }
+
+    private List<KeyMetadata> expectedTelephonyConfigurationKeys() {
+        return List.of(
+                key("call_directions", "PRIMARY KEY", "id", false),
+                key("call_directions", "UNIQUE", "code", false),
+                key("call_dispositions", "PRIMARY KEY", "id", false),
+                key("call_dispositions", "UNIQUE", "code", false),
+                key("call_event_types", "PRIMARY KEY", "id", false),
+                key("call_event_types", "UNIQUE", "code", false),
+                key("webhook_statuses", "PRIMARY KEY", "id", false),
+                key("webhook_statuses", "UNIQUE", "code", false),
+                key("pbx_configs", "PRIMARY KEY", "id", false),
+                key("extensions", "PRIMARY KEY", "id", false),
+                key("extensions", "UNIQUE", "pbx_config_id,extension_number", false),
+                key("sip_accounts", "PRIMARY KEY", "id", false),
+                key("sip_accounts", "UNIQUE", "pbx_config_id,sip_username", false),
+                key("phone_numbers", "PRIMARY KEY", "id", false),
+                key("phone_numbers", "UNIQUE", "pbx_config_id,normalized_number", false));
+    }
+
+    private List<IndexMetadata> expectedTelephonyConfigurationIndexes() {
+        return List.of(
+                index("call_directions", "uk_call_directions_code", true, "code"),
+                index("call_dispositions", "uk_call_dispositions_code", true, "code"),
+                index("call_event_types", "uk_call_event_types_code", true, "code"),
+                index("webhook_statuses", "uk_webhook_statuses_code", true, "code"),
+                index(
+                        "pbx_configs",
+                        "idx_pbx_configs_organization_id",
+                        false,
+                        "organization_id"),
+                index("pbx_configs", "idx_pbx_configs_branch_id", false, "branch_id"),
+                index(
+                        "extensions",
+                        "uk_extensions_pbx_extension_number",
+                        true,
+                        "pbx_config_id,extension_number"),
+                index("extensions", "idx_extensions_user_id", false, "user_id"),
+                index(
+                        "sip_accounts",
+                        "uk_sip_accounts_pbx_username",
+                        true,
+                        "pbx_config_id,sip_username"),
+                index("sip_accounts", "idx_sip_accounts_extension_id", false, "extension_id"),
+                index(
+                        "phone_numbers",
+                        "uk_phone_numbers_pbx_normalized_number",
+                        true,
+                        "pbx_config_id,normalized_number"));
     }
 
     private List<ColumnMetadata> expectedCrmWorkflowColumns() {
@@ -3355,7 +3943,14 @@ class DatabaseInfrastructureIntegrationTest {
                 restrictedForeignKey("lead_duplicates", "lead_id", "leads"),
                 restrictedForeignKey("lead_duplicates", "duplicate_of_lead_id", "leads"),
                 restrictedForeignKey("lead_duplicates", "detected_by_user_id", "users"),
-                restrictedForeignKey("lead_duplicates", "resolved_by_user_id", "users"));
+                restrictedForeignKey("lead_duplicates", "resolved_by_user_id", "users"),
+                restrictedForeignKey("pbx_configs", "organization_id", "organizations"),
+                restrictedForeignKey("pbx_configs", "branch_id", "branches"),
+                restrictedForeignKey("extensions", "pbx_config_id", "pbx_configs"),
+                restrictedForeignKey("extensions", "user_id", "users"),
+                restrictedForeignKey("sip_accounts", "pbx_config_id", "pbx_configs"),
+                restrictedForeignKey("sip_accounts", "extension_id", "extensions"),
+                restrictedForeignKey("phone_numbers", "pbx_config_id", "pbx_configs"));
     }
 
     private ForeignKeyMetadata restrictedForeignKey(
@@ -3435,6 +4030,9 @@ class DatabaseInfrastructureIntegrationTest {
 
     private record LeadFixture(
             UUID organizationId, UUID branchId, UUID sourceId, UUID statusId, UUID leadId) {}
+
+    private record TelephonyFixture(
+            UUID organizationId, UUID branchId, UUID firstPbxId, UUID secondPbxId) {}
 
     private record WorkflowFixture(
             LeadFixture leadFixture,
