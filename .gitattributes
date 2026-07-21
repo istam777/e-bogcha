@@ -11,6 +11,8 @@
 *.json text
 *.yml text
 *.yaml text
+backend/gradlew text eol=lf
+backend/gradlew.bat text eol=crlf
 
 # Declare files that will always have CRLF line endings on checkout
 *.bat text eol=crlf
@@ -27,3 +29,4 @@
 *.ttf binary
 *.eot binary
 *.pdf binary
+backend/gradle/wrapper/gradle-wrapper.jar binary
