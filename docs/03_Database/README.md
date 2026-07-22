@@ -101,4 +101,16 @@ version BIGINT NOT NULL
 - Every destructive change requires a documented rollout and rollback strategy.
 - Seed data is separated from structural migrations when practical.
 
+## Core reference seed proposal
+
+DB-001A requires minimum system-owned core seed identities. The approved
+[CORE_REFERENCE_DATA_PROPOSAL.md](CORE_REFERENCE_DATA_PROPOSAL.md) contains a
+complete 16-row tuple matrix across five tables. Status: APPROVED. The exact
+tuple matrix is fixed for future V13 implementation.
+
+V13 has not yet been created. PR #2 remains not ready to merge until V13 is
+implemented, integration tests are updated, validation passes, the implementation
+is committed and pushed, the PR description is updated, the existing review
+thread is remediated, and the implementation passes final PR re-review.
+
 Detailed table definitions and ER diagrams will be added incrementally with each module before implementation.
