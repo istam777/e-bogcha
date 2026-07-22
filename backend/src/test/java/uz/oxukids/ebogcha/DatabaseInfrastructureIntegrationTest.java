@@ -5,9 +5,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
+import java.util.ArrayDeque;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.Deque;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -542,7 +547,12 @@ class DatabaseInfrastructureIntegrationTest {
                     conflictingId);
 
             Flyway throughV12 = flywayForSchema(schemaName, MigrationVersion.fromVersion("12"));
-            assertThatThrownBy(throughV12::migrate).isInstanceOf(FlywayException.class);
+            assertThatThrownBy(throughV12::migrate)
+                    .isInstanceOfSatisfying(
+                            FlywayException.class,
+                            exception -> assertThat(causeChainContainsSqlState(exception, "23505"))
+                                    .as("Flyway failure cause chain contains PostgreSQL unique-violation SQLSTATE")
+                                    .isTrue());
 
             Map<String, Object> preservedConflict = jdbcTemplate.queryForMap(
                     "SELECT id, name FROM " + schemaName
@@ -4310,6 +4320,32 @@ class DatabaseInfrastructureIntegrationTest {
         Throwable mostSpecificCause = exception.getMostSpecificCause();
         assertThat(mostSpecificCause).isInstanceOf(SQLException.class);
         assertThat(((SQLException) mostSpecificCause).getSQLState()).isEqualTo(expectedSqlState);
+    }
+
+    private boolean causeChainContainsSqlState(Throwable throwable, String expectedSqlState) {
+        Set<Throwable> visited = Collections.newSetFromMap(new IdentityHashMap<>());
+        Deque<Throwable> pending = new ArrayDeque<>();
+        pending.push(throwable);
+
+        while (!pending.isEmpty()) {
+            Throwable current = pending.pop();
+            if (!visited.add(current)) {
+                continue;
+            }
+            if (current instanceof SQLException sqlException) {
+                if (expectedSqlState.equals(sqlException.getSQLState())) {
+                    return true;
+                }
+                if (sqlException.getNextException() != null) {
+                    pending.push(sqlException.getNextException());
+                }
+            }
+            if (current.getCause() != null) {
+                pending.push(current.getCause());
+            }
+        }
+
+        return false;
     }
 
     private List<ColumnMetadata> expectedTelephonyConfigurationColumns() {

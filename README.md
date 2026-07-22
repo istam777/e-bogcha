@@ -2,7 +2,7 @@
 
 Internal kindergarten management platform for Oxu Kids. The system will manage the complete operational flow from CRM lead acquisition through admissions, payment, student enrollment, and later ERP processes.
 
-> Project status: architecture and repository foundation. Application bootstrap has not yet been implemented.
+> Project status: the Spring Boot backend bootstrap and PostgreSQL/Flyway database foundation through V12 are implemented. The database foundation covers Core/IAM, Files/Audit/Settings, CRM, and Telephony schemas, with PostgreSQL Testcontainers integration tests. Production business services and APIs, frontend workflows, Admissions, Finance, and later ERP functionality remain deferred unless explicitly implemented in a later task.
 
 ## Approved architecture
 

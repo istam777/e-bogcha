@@ -96,7 +96,7 @@ Service-level negative integration tests must prove rejection of each invalid cr
 | `V8__create_crm_lead_core_schema.sql` | `leads`, `lead_phones`, `prospective_children` | 3 |
 | `V9__create_crm_workflow_schema.sql` | `lead_assignments`, `lead_status_history`, `lead_activities`, `lead_notes`, `lead_tasks`, `tours`, `lead_duplicates` | 7 |
 | `V10__create_telephony_configuration_schema.sql` | `call_directions`, `call_dispositions`, `call_event_types`, `webhook_statuses`, `pbx_configs`, `extensions`, `sip_accounts`, `phone_numbers` | 8 |
-| `V11__create_telephony_call_schema.sql` | `call_sessions`, `call_participants`, `call_events`, `call_recordings`, `lead_calls`, `webhook_events` | 6 |
+| `V11__create_telephony_calls_schema.sql` | `call_sessions`, `call_participants`, `call_events`, `call_recordings`, `lead_calls`, `webhook_events` | 6 |
 
 Total: 30 tables. `V12` is reserved for explicitly approved global CRM and telephony reference seeds. Organization-owned rows are excluded. `lead_conversions` remains unversioned.
 

@@ -4,7 +4,7 @@
 
 This folder contains the CRM workflow, PostgreSQL implementation decisions, and approved global CRM/telephony reference data for E-Bog'cha DB-001C-02.
 
-It documents the approved implementation boundary and behavior. At this documentation stage, it does not claim that the V12 SQL migration or CRM application services have been implemented or committed.
+It documents the approved implementation boundary and behavior. The V7-V12 database migrations are implemented and committed; CRM application services remain deferred.
 
 ## Authoritative document order
 
@@ -16,7 +16,7 @@ It documents the approved implementation boundary and behavior. At this document
 
 ## Current decision status
 
-The 28 global reference tuples are approved exactly as recorded in `CRM_REFERENCE_DATA_PROPOSAL.md`, and V12 is authorized for implementation as a data-only Flyway migration. Its replay policy is strict plain `INSERT`: conflicts fail visibly, and no `ON CONFLICT`, merge, update, delete, or replacement behavior is permitted. Organization-scoped CRM references remain unseeded. V12 has not yet been implemented or committed at this documentation stage.
+The 28 global reference tuples are approved exactly as recorded in `CRM_REFERENCE_DATA_PROPOSAL.md` and implemented by V12 as a data-only Flyway migration. V12 uses strict ordinary `INSERT` statements: conflicts fail visibly, and no `ON CONFLICT`, merge, update, delete, or replacement behavior is permitted. Organization-scoped CRM references remain unseeded.
 
 ## Planned migration sequence
 
@@ -26,14 +26,13 @@ The 28 global reference tuples are approved exactly as recorded in `CRM_REFERENC
 | `V8__create_crm_lead_core_schema.sql` | Lead and contact core | 3 |
 | `V9__create_crm_workflow_schema.sql` | Assignment, history, activity, tasks, tours, duplicates | 7 |
 | `V10__create_telephony_configuration_schema.sql` | PBX configuration and telephony references | 8 |
-| `V11__create_telephony_call_schema.sql` | Calls, events, recordings, lead links, webhooks | 6 |
+| `V11__create_telephony_calls_schema.sql` | Calls, events, recordings, lead links, webhooks | 6 |
 
-V7-V11 contain exactly 30 CRM/telephony tables. V12 is authorized to insert only the 28 approved global reference tuples and must not contain organization-owned data.
+V7-V11 contain exactly 30 CRM/telephony tables. V12 inserts exactly the 28 approved global reference tuples and contains no organization-owned data.
 
 ## Deferred items
 
 - `lead_conversions` is deferred to an unversioned CRM/Admissions boundary migration after `children` and `admission_applications` exist.
 - Organization-owned CRM reference rows require an organization-bootstrap specification.
-- V12 implementation remains pending; its 28 tuples and strict replay policy are approved.
 - Recording retention/deletion belongs to the later storage and security implementation phase.
 - CRM services and their service-level integration tests are outside this documentation-only task.

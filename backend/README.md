@@ -1,6 +1,6 @@
 # E-Bog'cha backend infrastructure
 
-This directory contains the DB-001B Spring Boot and database-infrastructure bootstrap. It intentionally contains no business-domain code and no business-schema Flyway migration.
+This directory contains the Spring Boot backend bootstrap and the implemented PostgreSQL database foundation. Flyway is the schema authority, and PostgreSQL Testcontainers integration tests validate the migrations. Production business services and APIs remain deferred unless explicitly implemented in a later task.
 
 ## Prerequisites
 
@@ -90,4 +90,19 @@ Do not run destructive volume deletion against shared or production systems. Nor
 
 ## Migration boundary
 
-Flyway is enabled and scans `classpath:db/migration`. DB-001B keeps that location empty, so Flyway may create only its own schema-history infrastructure. The 88-table approved business schema belongs to DB-001C after DB-001B review and approval.
+Flyway scans `classpath:db/migration` and applies the implemented database foundation through V12:
+
+- `V1__create_foundation_schema.sql`: Core and IAM foundation
+- `V2__enforce_audit_log_immutability.sql`: audit-log immutability
+- `V3__seed_foundation_reference_data.sql`: foundation reference data
+- `V4__create_core_reference_schema.sql`: core reference schema
+- `V5__create_identity_and_staff_schema.sql`: identity and staff schema
+- `V6__create_file_and_settings_schema.sql`: Files, Audit, and Settings schema
+- `V7__create_crm_reference_schema.sql`: CRM reference schema
+- `V8__create_crm_lead_core_schema.sql`: CRM lead core schema
+- `V9__create_crm_workflow_schema.sql`: CRM workflow schema
+- `V10__create_telephony_configuration_schema.sql`: Telephony configuration schema
+- `V11__create_telephony_calls_schema.sql`: Telephony calls schema
+- `V12__seed_crm_and_telephony_reference_data.sql`: approved global CRM and telephony reference data
+
+This delivery implements the database foundation only. It does not implement production business services or APIs. Admissions and later modules remain outside this database delivery.
