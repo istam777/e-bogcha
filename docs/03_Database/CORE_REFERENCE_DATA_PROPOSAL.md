@@ -4,9 +4,9 @@ Status: APPROVED
 
 ## 1. Purpose
 
-This document proposes the complete fixed identity and value matrix for the minimum system-owned core reference data required by DB-001A. It prepares the correction for the unresolved PR #2 finding without creating a migration or changing an existing migration or test.
+This document records the approved fixed identity and value matrix for the minimum system-owned core reference data required by DB-001A and the delivery status of its V13 implementation.
 
-The proposal contains exactly 16 rows across five implemented global lookup tables. A future V13 migration is expected only after every tuple is explicitly approved.
+The matrix contains exactly 16 rows across five implemented global lookup tables. After explicit tuple approval, V13 implemented the matrix without changing an existing migration.
 
 ## 2. Architecture authority
 
@@ -21,9 +21,9 @@ The authoritative DBML and V4 schema define the columns and globally unique code
 
 ## 3. Confirmed PR finding
 
-PR #2 currently creates these tables in V4 but leaves them empty through V12. The current integration test also requires these tables to be empty. That behavior conflicts with DB-001A's minimum system-owned seed policy.
+The original PR #2 finding identified that V4 created these tables but V1-V12 left them empty and the integration test required them to remain empty. That behavior conflicted with DB-001A's minimum system-owned seed policy.
 
-The GitHub review finding remains unresolved. This proposal documents a candidate correction; it does not resolve the finding and does not authorize implementation by itself.
+V13 now appears to address the technical concern by inserting the approved fixed identities. GitHub review thread `PRRT_kwDOTcawyc6S0eZR` remains current and formally unresolved; no reply or resolution has occurred.
 
 ## 4. Included tables
 
@@ -98,7 +98,7 @@ Before this document was written, every proposed UUID was checked against the re
 
 ## 8. Field-value decisions
 
-All rows are proposed as active because they are the minimum available system vocabulary.
+All rows are approved as active because they are the minimum available system vocabulary.
 
 For `languages`, `sort_order` is explicitly seeded as 10 for `UZ` and 20 for `RU`; V13 must not rely on the database default.
 
@@ -107,17 +107,17 @@ No authoritative `document_types.applies_to` vocabulary exists in the DBML or cu
 - `CHILD`: limited to child or student records.
 - `PERSON`: usable for either child or adult person records.
 
-The approved assignments are `BIRTH_CERTIFICATE` and `MEDICAL_CERTIFICATE` to `CHILD`, with `PASSPORT`, `ID_CARD`, `PINFL`, and `PHOTO` assigned to `PERSON`. The schema has no enum or CHECK constraint for this field, and this proposal does not add one. The vocabulary and every assignment are approved for the planned V13 implementation. Later vocabulary expansion requires application and documentation review.
+The approved assignments are `BIRTH_CERTIFICATE` and `MEDICAL_CERTIFICATE` to `CHILD`, with `PASSPORT`, `ID_CARD`, `PINFL`, and `PHOTO` assigned to `PERSON`. The schema has no enum or CHECK constraint for this field, and this proposal does not add one. The vocabulary and every assignment are implemented by V13 as approved. Later vocabulary expansion requires application and documentation review.
 
-For verification statuses, `VERIFIED` and `REJECTED` are proposed as terminal outcomes (`is_final = true`), while `PENDING` is non-final (`is_final = false`). Every row is explicitly active.
+For verification statuses, `VERIFIED` and `REJECTED` are approved terminal outcomes (`is_final = true`), while `PENDING` is non-final (`is_final = false`). Every row is explicitly active.
 
-## 9. Future V13 migration contract
+## 9. Implemented V13 migration contract
 
-After exact tuple approval, the expected implementation path is:
+The implemented migration is:
 
 `backend/src/main/resources/db/migration/V13__seed_core_reference_data.sql`
 
-V13 must:
+V13:
 
 - be data-only;
 - insert exactly 16 rows into exactly five tables;
@@ -131,7 +131,7 @@ No existing migration may be edited. Any later identity or value change requires
 
 ## 10. Strict conflict and replay policy
 
-V13 must prohibit:
+V13 prohibits:
 
 - `ON CONFLICT`;
 - `MERGE`;
@@ -145,7 +145,7 @@ Ordinary strict insertion makes drift visible. A UUID or unique-code collision m
 
 ## 11. Integration-test contract
 
-Future V13 implementation must update `backend/src/test/java/uz/oxukids/ebogcha/DatabaseInfrastructureIntegrationTest.java` to prove:
+The implemented `backend/src/test/java/uz/oxukids/ebogcha/DatabaseInfrastructureIntegrationTest.java` coverage proves:
 
 - Flyway applies V1-V13 and reports no pending migration;
 - exactly 16 new rows exist with the exact UUID/code/name/value matrix;
@@ -158,20 +158,22 @@ Future V13 implementation must update `backend/src/test/java/uz/oxukids/ebogcha/
 - organization-owned CRM references and runtime PBX data remain unseeded; and
 - existing test fixtures never delete fixed seed rows.
 
-The current combined assertion at lines 265-299 that requires these five target tables and other data tables to be empty is obsolete for the five target tables. It must be replaced only during V13 implementation while preserving zero-row assertions for `nationalities`, organization-owned references, runtime PBX data, and other intentionally empty tables. No test is changed by this proposal.
+The obsolete five-table zero-row expectation was removed only for the V13 target tables. Zero-row assertions remain for `nationalities`, organization-owned references, runtime PBX data, and other intentionally empty tables.
 
-## 12. PR remediation plan
+## 12. Delivery progress and remaining gates
 
-1. Approve the exact 16-row tuple matrix.
-2. Commit the approved proposal.
-3. Implement V13 and update the integration tests.
-4. Perform a read-only implementation review.
-5. Commit and push the implementation.
-6. Update the PR description.
-7. Reply to the existing review thread with the V13 commit and validation evidence.
-8. Re-review the implementation.
-9. Resolve the thread only after the finding is demonstrably fixed.
-10. Merge only after DB-001C-05 is approved.
+The tuple approval, approval-document commit, V13 implementation, integration-test update, independent read-only implementation review, implementation commit, push, and remote verification are complete.
+
+The remaining gates are:
+
+1. review this documentation-only change;
+2. commit and push this documentation update;
+3. update PR #2's description through a dedicated external-action task;
+4. reply to the review concern with the V13 commit and validation evidence;
+5. resolve the review thread only after verification;
+6. perform final remote and PR verification;
+7. determine merge readiness; and
+8. merge only through a separately authorized task.
 
 ## 13. Approval record
 
@@ -185,18 +187,25 @@ Approved scope: exactly 16 rows across five tables:
 - `document_types`; and
 - `document_verification_statuses`.
 
-The approved UUID, code, name, flag, sort-order, and `applies_to` values are fixed for V13. The V13 migration and its integration-test updates now exist in the local working tree and await read-only implementation review. They have not been committed or pushed.
+The approved UUID, code, name, flag, sort-order, and `applies_to` values are fixed in `backend/src/main/resources/db/migration/V13__seed_core_reference_data.sql`. V13 inserts exactly the approved 16 fixed tuples across five tables with strict ordinary `INSERT` statements and no conflict suppression. It contains no `nationalities` or organization-owned reference data.
 
-PR #2 has not been updated and remains not ready to merge until all of the following are complete:
+Delivery and validation record:
 
-- read-only implementation review;
-- implementation commit and push;
-- PR description update;
-- review-thread remediation; and
-- final PR re-review.
+- DB-001C-05D = APPROVED. The independent read-only implementation review recorded no BLOCKER, HIGH, MEDIUM, or LOW implementation finding.
+- Full Gradle validation ran 75 tests. Test result: 75 passed, 0 failed, 0 errors, 0 skipped.
+- Testcontainers and Flyway used PostgreSQL 17.10.
+- Strict duplicate-code behavior is covered through SQLSTATE `23505`, and the existing V3 and V12 seed coverage remains intact.
+- Approval commit: `b0ba7175bc81eaea7dff2b81ef1db8f9e81ac694` (`docs: approve core reference seed data`).
+- V13 implementation commit: `aaaee9c92600d3c36de37d825c778114e16d9e3c` (`feat(db): seed core reference data`).
+- Both commits were pushed normally, without force, to `origin/feature/database-foundation`.
+- Branch: `feature/database-foundation`. Local and remote head: `aaaee9c92600d3c36de37d825c778114e16d9e3c`. Ahead/behind after push: 0 behind and 0 ahead.
+- PR #2 is open, is not a draft, contains the V13 implementation commit, and has head `aaaee9c92600d3c36de37d825c778114e16d9e3c`. GitHub reported it mergeable during DB-001C-05H.
+- GitHub checks: not configured. There is no formal approval or change-request review decision.
+- PR description update: pending.
+- Review thread `PRRT_kwDOTcawyc6S0eZR` remains unresolved and not outdated. V13 appears to address its technical concern, but no reply or formal resolution has occurred.
 
 ## 14. Current status
 
 Status: APPROVED
 
-The exact 16-row matrix remains approved as recorded above. V13 is implemented only in the local working tree and awaits read-only review; it has not been committed or pushed. PR #2 has not been updated, its GitHub review thread remains unresolved, and the PR remains not ready to merge.
+The exact 16-row matrix remains approved and is implemented, independently reviewed, committed, pushed, and remotely verified as recorded above. PR #2's description update, review-thread response and formal resolution, final re-review, and merge decision remain pending. PR #2 is not yet declared ready to merge, and merge requires a separately authorized task.

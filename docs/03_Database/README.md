@@ -108,9 +108,17 @@ DB-001A requires minimum system-owned core seed identities. The approved
 complete 16-row tuple matrix across five tables. Status: APPROVED. The exact
 tuple matrix remains fixed for V13.
 
-V13 is implemented locally with its integration-test updates and awaits
-read-only review; it has not been committed or pushed. PR #2 remains not ready
-to merge while test review, commit, push, PR description update, review-thread
-remediation, and final PR re-review remain pending.
+### V13 delivery status
+
+V13 is implemented and DB-001C-05D = APPROVED. Implementation commit
+`aaaee9c92600d3c36de37d825c778114e16d9e3c` was pushed to
+`origin/feature/database-foundation`; the remote branch and PR #2 head both
+match that commit. Full validation passed 75/75 tests with 0 failures, 0 errors,
+and 0 skipped.
+
+GitHub checks are not configured. Review thread `PRRT_kwDOTcawyc6S0eZR`
+remains unresolved, the PR description update is pending, and merge readiness
+has not yet been declared. Final review and the merge decision remain pending
+dedicated workflows.
 
 Detailed table definitions and ER diagrams will be added incrementally with each module before implementation.
