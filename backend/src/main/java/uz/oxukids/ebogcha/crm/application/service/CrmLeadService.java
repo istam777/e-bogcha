@@ -1,0 +1,76 @@
+package uz.oxukids.ebogcha.crm.application.service;
+
+import uz.oxukids.ebogcha.crm.application.port.in.AcceptLeadCommand;
+import uz.oxukids.ebogcha.crm.application.port.in.AcceptLeadUseCase;
+import uz.oxukids.ebogcha.crm.application.port.in.ChangeLeadStatusCommand;
+import uz.oxukids.ebogcha.crm.application.port.in.ChangeLeadStatusUseCase;
+import uz.oxukids.ebogcha.crm.application.port.in.CreateLeadCommand;
+import uz.oxukids.ebogcha.crm.application.port.in.CreateLeadUseCase;
+import uz.oxukids.ebogcha.crm.application.port.out.DuplicateLeadCheckPort;
+import uz.oxukids.ebogcha.crm.application.port.out.LeadRepository;
+import uz.oxukids.ebogcha.crm.domain.exception.DuplicateLeadException;
+import uz.oxukids.ebogcha.crm.domain.exception.LeadNotFoundException;
+import uz.oxukids.ebogcha.crm.domain.model.Lead;
+import uz.oxukids.ebogcha.crm.domain.model.PhoneNumber;
+import uz.oxukids.ebogcha.crm.domain.policy.InitialContactDeadlinePolicy;
+import uz.oxukids.ebogcha.crm.domain.policy.LeadStatusTransitionPolicy;
+import uz.oxukids.ebogcha.crm.domain.time.CrmClock;
+
+import java.util.Objects;
+
+public final class CrmLeadService implements CreateLeadUseCase, AcceptLeadUseCase, ChangeLeadStatusUseCase {
+
+    private final LeadRepository leadRepository;
+    private final DuplicateLeadCheckPort duplicateLeadCheckPort;
+    private final CrmClock clock;
+    private final InitialContactDeadlinePolicy deadlinePolicy;
+    private final LeadStatusTransitionPolicy transitionPolicy;
+
+    public CrmLeadService(
+            LeadRepository leadRepository,
+            DuplicateLeadCheckPort duplicateLeadCheckPort,
+            CrmClock clock,
+            InitialContactDeadlinePolicy deadlinePolicy,
+            LeadStatusTransitionPolicy transitionPolicy
+    ) {
+        this.leadRepository = Objects.requireNonNull(leadRepository, "leadRepository must not be null");
+        this.duplicateLeadCheckPort = Objects.requireNonNull(
+                duplicateLeadCheckPort, "duplicateLeadCheckPort must not be null"
+        );
+        this.clock = Objects.requireNonNull(clock, "clock must not be null");
+        this.deadlinePolicy = Objects.requireNonNull(deadlinePolicy, "deadlinePolicy must not be null");
+        this.transitionPolicy = Objects.requireNonNull(transitionPolicy, "transitionPolicy must not be null");
+    }
+
+    @Override
+    public Lead createLead(CreateLeadCommand command) {
+        Objects.requireNonNull(command, "command must not be null");
+        PhoneNumber normalizedPhone = PhoneNumber.of(command.phoneNumber());
+        if (duplicateLeadCheckPort.existsByOrganizationAndPhone(command.organizationId(), normalizedPhone)) {
+            throw new DuplicateLeadException();
+        }
+        Lead lead = Lead.create(
+                command.leadId(), command.organizationId(), command.source(), normalizedPhone,
+                clock.now(), deadlinePolicy
+        );
+        leadRepository.saveNew(lead);
+        return lead;
+    }
+
+    @Override
+    public Lead acceptLead(AcceptLeadCommand command) {
+        Objects.requireNonNull(command, "command must not be null");
+        return leadRepository.claimOwnership(command.leadId(), command.operatorId());
+    }
+
+    @Override
+    public Lead changeLeadStatus(ChangeLeadStatusCommand command) {
+        Objects.requireNonNull(command, "command must not be null");
+        Lead lead = leadRepository.findById(command.leadId())
+                .orElseThrow(() -> new LeadNotFoundException(command.leadId()));
+        var previousStatus = lead.status();
+        lead.changeStatus(command.targetStatus(), transitionPolicy);
+        leadRepository.saveStatusChange(lead, previousStatus, clock.now());
+        return lead;
+    }
+}
