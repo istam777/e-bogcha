@@ -1,0 +1,1377 @@
+Project e_bogcha_v1 {
+  database_type: 'PostgreSQL'
+  Note: 'E-Bogcha V1 logical database model for Oxu Kids. Scope: Core/IAM, CRM, Admissions, minimal Billing, ERP foundation, Telephony, Files, Audit and Settings. SQL migrations will be authoritative after technical approval. V2 corrections: organization-scoped people, multi-child lead conversion, invoice-level due-date extensions, tariff-option snapshots, dynamic document verification statuses, and explicit PostgreSQL NULL-unique handling.'
+}
+
+// CORE & IAM
+Table organizations {
+  id uuid [pk]
+  code varchar(50) [not null, unique]
+  name varchar(255) [not null]
+  is_active boolean [not null, default: true]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+}
+
+Table branches {
+  id uuid [pk]
+  organization_id uuid [not null, ref: > organizations.id]
+  code varchar(50) [not null]
+  name varchar(255) [not null]
+  address_text text
+  normalized_phone varchar(32)
+  timezone varchar(64) [not null, default: 'Asia/Tashkent']
+  is_active boolean [not null, default: true]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+  indexes {
+    (organization_id, code) [unique]
+    organization_id
+  }
+}
+
+Table departments {
+  id uuid [pk]
+  organization_id uuid [not null, ref: > organizations.id]
+  branch_id uuid [ref: > branches.id]
+  parent_department_id uuid [ref: > departments.id]
+  code varchar(50) [not null]
+  name varchar(255) [not null]
+  is_active boolean [not null, default: true]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+  indexes {
+    (organization_id, branch_id, code) [unique]
+    organization_id
+    branch_id
+    parent_department_id
+  }
+}
+
+Table positions {
+  id uuid [pk]
+  organization_id uuid [not null, ref: > organizations.id]
+  code varchar(50) [not null]
+  name varchar(255) [not null]
+  is_active boolean [not null, default: true]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+  indexes {
+    (organization_id, code) [unique]
+    organization_id
+  }
+}
+
+Table user_statuses {
+  id uuid [pk]
+  code varchar(50) [not null, unique]
+  name varchar(100) [not null]
+  is_active boolean [not null, default: true]
+  sort_order int [not null, default: 0]
+}
+
+Table users {
+  id uuid [pk]
+  organization_id uuid [not null, ref: > organizations.id]
+  username_normalized varchar(150) [not null]
+  email_normalized varchar(255)
+  normalized_phone varchar(32)
+  display_name varchar(255) [not null]
+  status_id uuid [not null, ref: > user_statuses.id]
+  is_active boolean [not null, default: true]
+  last_login_at timestamptz
+  created_at timestamptz [not null]
+  created_by uuid [ref: > users.id]
+  updated_at timestamptz [not null]
+  updated_by uuid [ref: > users.id]
+  indexes {
+    (organization_id, username_normalized) [unique]
+    (organization_id, email_normalized) [unique]
+    organization_id
+    status_id
+    normalized_phone
+    created_by
+    updated_by
+  }
+}
+
+Table user_credentials {
+  user_id uuid [pk, ref: > users.id]
+  password_hash varchar(255) [not null]
+  password_changed_at timestamptz [not null]
+  failed_login_attempts int [not null, default: 0]
+  locked_until timestamptz
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+}
+
+Table employees {
+  id uuid [pk]
+  user_id uuid [ref: > users.id]
+  branch_id uuid [not null, ref: > branches.id]
+  department_id uuid [ref: > departments.id]
+  position_id uuid [ref: > positions.id]
+  employee_number varchar(50) [not null, unique]
+  employment_start_date date [not null]
+  employment_end_date date
+  is_active boolean [not null, default: true]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+  indexes {
+    user_id [unique]
+    branch_id
+    department_id
+    position_id
+  }
+}
+
+Table roles {
+  id uuid [pk]
+  organization_id uuid [not null, ref: > organizations.id]
+  code varchar(100) [not null]
+  name varchar(150) [not null]
+  description text
+  is_system boolean [not null, default: false]
+  is_active boolean [not null, default: true]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+  indexes {
+    (organization_id, code) [unique]
+    organization_id
+  }
+}
+
+Table permissions {
+  id uuid [pk]
+  code varchar(150) [not null, unique]
+  module_code varchar(80) [not null]
+  name varchar(150) [not null]
+  description text
+  created_at timestamptz [not null]
+}
+
+Table role_permissions {
+  role_id uuid [not null, ref: > roles.id]
+  permission_id uuid [not null, ref: > permissions.id]
+  granted_at timestamptz [not null]
+  granted_by uuid [ref: > users.id]
+  indexes {
+    (role_id, permission_id) [pk]
+    permission_id
+    granted_by
+  }
+}
+
+Table user_roles {
+  id uuid [pk]
+  user_id uuid [not null, ref: > users.id]
+  role_id uuid [not null, ref: > roles.id]
+  branch_id uuid [ref: > branches.id]
+  valid_from timestamptz [not null]
+  valid_until timestamptz
+  assigned_by uuid [not null, ref: > users.id]
+  created_at timestamptz [not null]
+  indexes {
+    user_id
+    role_id
+    branch_id
+    assigned_by
+    (user_id, role_id, branch_id, valid_from)
+  }
+  Note: 'Prevent duplicate active role assignment with a partial unique index in SQL.'
+}
+
+Table user_branch_access {
+  user_id uuid [not null, ref: > users.id]
+  branch_id uuid [not null, ref: > branches.id]
+  granted_by uuid [not null, ref: > users.id]
+  granted_at timestamptz [not null]
+  indexes {
+    (user_id, branch_id) [pk]
+    branch_id
+    granted_by
+  }
+}
+
+Table refresh_tokens {
+  id uuid [pk]
+  user_id uuid [not null, ref: > users.id]
+  token_hash varchar(255) [not null, unique]
+  expires_at timestamptz [not null]
+  revoked_at timestamptz
+  created_at timestamptz [not null]
+  created_ip varchar(64)
+  user_agent text
+  indexes {
+    user_id
+    expires_at
+  }
+}
+
+Table languages {
+  id uuid [pk]
+  code varchar(20) [not null, unique]
+  name varchar(100) [not null]
+  is_active boolean [not null, default: true]
+  sort_order int [not null, default: 0]
+}
+
+Table nationalities {
+  id uuid [pk]
+  code varchar(30) [not null, unique]
+  name varchar(100) [not null]
+  is_active boolean [not null, default: true]
+}
+
+Table gender_types {
+  id uuid [pk]
+  code varchar(30) [not null, unique]
+  name varchar(100) [not null]
+  is_active boolean [not null, default: true]
+}
+
+Table relationship_types {
+  id uuid [pk]
+  code varchar(50) [not null, unique]
+  name varchar(100) [not null]
+  is_active boolean [not null, default: true]
+}
+
+Table document_types {
+  id uuid [pk]
+  code varchar(50) [not null, unique]
+  name varchar(150) [not null]
+  applies_to varchar(50) [not null]
+  is_active boolean [not null, default: true]
+}
+
+Table document_verification_statuses {
+  id uuid [pk]
+  code varchar(50) [not null, unique]
+  name varchar(100) [not null]
+  is_final boolean [not null, default: false]
+  is_active boolean [not null, default: true]
+}
+
+// FILES, AUDIT & SETTINGS
+Table stored_files {
+  id uuid [pk]
+  organization_id uuid [not null, ref: > organizations.id]
+  branch_id uuid [ref: > branches.id]
+  storage_provider varchar(40) [not null]
+  bucket_name varchar(120) [not null]
+  object_key varchar(500) [not null]
+  original_file_name varchar(255) [not null]
+  content_type varchar(150) [not null]
+  file_size bigint [not null]
+  checksum varchar(128)
+  uploaded_by uuid [ref: > users.id]
+  uploaded_at timestamptz [not null]
+  deleted_at timestamptz
+  indexes {
+    (storage_provider, bucket_name, object_key) [unique]
+    organization_id
+    branch_id
+    uploaded_by
+    checksum
+  }
+}
+
+Table audit_logs {
+  id uuid [pk]
+  organization_id uuid [not null, ref: > organizations.id]
+  branch_id uuid [ref: > branches.id]
+  actor_user_id uuid [ref: > users.id]
+  entity_type varchar(100) [not null]
+  entity_id uuid [not null]
+  action varchar(80) [not null]
+  correlation_id varchar(100)
+  request_id varchar(100)
+  changed_field_names jsonb
+  sanitized_metadata jsonb
+  ip_address varchar(64)
+  user_agent text
+  created_at timestamptz [not null]
+  indexes {
+    organization_id
+    branch_id
+    actor_user_id
+    (entity_type, entity_id)
+    created_at
+    correlation_id
+    request_id
+  }
+  Note: 'Append-only. Never store decrypted PII in metadata.'
+}
+
+Table application_settings {
+  id uuid [pk]
+  organization_id uuid [not null, ref: > organizations.id]
+  branch_id uuid [ref: > branches.id]
+  setting_key varchar(150) [not null]
+  setting_value text
+  value_type varchar(40) [not null]
+  is_sensitive boolean [not null, default: false]
+  updated_by uuid [ref: > users.id]
+  updated_at timestamptz [not null]
+  indexes {
+    (organization_id, branch_id, setting_key) [unique]
+    organization_id
+    branch_id
+    updated_by
+  }
+  Note: 'SQL must use UNIQUE NULLS NOT DISTINCT or separate partial unique indexes for organization-level and branch-level settings.'
+}
+
+Table number_sequences {
+  id uuid [pk]
+  organization_id uuid [not null, ref: > organizations.id]
+  branch_id uuid [ref: > branches.id]
+  sequence_code varchar(80) [not null]
+  year int
+  prefix varchar(30)
+  next_value bigint [not null]
+  padding_length int [not null, default: 6]
+  updated_at timestamptz [not null]
+  indexes {
+    (organization_id, branch_id, sequence_code, year) [unique]
+    organization_id
+    branch_id
+  }
+  Note: 'SQL must use UNIQUE NULLS NOT DISTINCT or equivalent partial unique indexes because branch_id and year may be NULL.'
+}
+
+// CRM
+Table lead_sources {
+  id uuid [pk]
+  organization_id uuid [not null, ref: > organizations.id]
+  code varchar(50) [not null]
+  name varchar(120) [not null]
+  source_type varchar(50) [not null]
+  is_active boolean [not null, default: true]
+  sort_order int [not null, default: 0]
+  indexes {
+    (organization_id, code) [unique]
+    organization_id
+  }
+}
+
+Table lead_statuses {
+  id uuid [pk]
+  organization_id uuid [not null, ref: > organizations.id]
+  code varchar(50) [not null]
+  name varchar(120) [not null]
+  pipeline_order int [not null]
+  is_initial boolean [not null, default: false]
+  is_success boolean [not null, default: false]
+  is_lost boolean [not null, default: false]
+  is_archived boolean [not null, default: false]
+  is_active boolean [not null, default: true]
+  indexes {
+    (organization_id, code) [unique]
+    organization_id
+    pipeline_order
+  }
+}
+
+Table lost_reasons {
+  id uuid [pk]
+  organization_id uuid [not null, ref: > organizations.id]
+  code varchar(50) [not null]
+  name varchar(120) [not null]
+  is_active boolean [not null, default: true]
+  indexes {
+    (organization_id, code) [unique]
+    organization_id
+  }
+}
+
+Table tour_outcomes {
+  id uuid [pk]
+  organization_id uuid [not null, ref: > organizations.id]
+  code varchar(50) [not null]
+  name varchar(120) [not null]
+  is_active boolean [not null, default: true]
+  indexes {
+    (organization_id, code) [unique]
+    organization_id
+  }
+}
+
+Table lead_task_statuses {
+  id uuid [pk]
+  code varchar(50) [not null, unique]
+  name varchar(100) [not null]
+  is_closed boolean [not null, default: false]
+  is_active boolean [not null, default: true]
+}
+
+Table lead_activity_types {
+  id uuid [pk]
+  code varchar(50) [not null, unique]
+  name varchar(100) [not null]
+  is_active boolean [not null, default: true]
+}
+
+Table leads {
+  id uuid [pk]
+  branch_id uuid [not null, ref: > branches.id]
+  source_id uuid [not null, ref: > lead_sources.id]
+  status_id uuid [not null, ref: > lead_statuses.id]
+  owner_user_id uuid [ref: > users.id]
+  parent_or_guardian_name varchar(255) [not null]
+  preferred_language_id uuid [ref: > languages.id]
+  intent_summary text
+  first_contact_due_at timestamptz [not null]
+  first_contact_at timestamptz
+  lost_reason_id uuid [ref: > lost_reasons.id]
+  archived_at timestamptz
+  created_at timestamptz [not null]
+  created_by uuid [ref: > users.id]
+  updated_at timestamptz [not null]
+  updated_by uuid [ref: > users.id]
+  indexes {
+    branch_id
+    source_id
+    status_id
+    owner_user_id
+    preferred_language_id
+    lost_reason_id
+    created_by
+    updated_by
+    (branch_id, status_id)
+    (branch_id, created_at)
+    first_contact_due_at
+  }
+}
+
+Table lead_phones {
+  id uuid [pk]
+  lead_id uuid [not null, ref: > leads.id]
+  normalized_phone varchar(32) [not null]
+  display_phone varchar(50) [not null]
+  is_primary boolean [not null, default: false]
+  created_at timestamptz [not null]
+  indexes {
+    lead_id
+    normalized_phone
+  }
+}
+
+Table prospective_children {
+  id uuid [pk]
+  lead_id uuid [not null, ref: > leads.id]
+  first_name varchar(120)
+  last_name varchar(120)
+  patronymic varchar(120)
+  date_of_birth date
+  reported_age_months int
+  preferred_language_id uuid [ref: > languages.id]
+  notes text
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+  indexes {
+    lead_id
+    preferred_language_id
+  }
+}
+
+Table lead_assignments {
+  id uuid [pk]
+  lead_id uuid [not null, ref: > leads.id]
+  assigned_user_id uuid [not null, ref: > users.id]
+  assigned_by uuid [ref: > users.id]
+  assigned_at timestamptz [not null]
+  ended_at timestamptz
+  assignment_reason text
+  indexes {
+    lead_id
+    assigned_user_id
+    assigned_by
+    (lead_id, ended_at)
+  }
+}
+
+Table lead_status_history {
+  id uuid [pk]
+  lead_id uuid [not null, ref: > leads.id]
+  from_status_id uuid [ref: > lead_statuses.id]
+  to_status_id uuid [not null, ref: > lead_statuses.id]
+  changed_by uuid [not null, ref: > users.id]
+  changed_at timestamptz [not null]
+  note text
+  indexes {
+    lead_id
+    from_status_id
+    to_status_id
+    changed_by
+    changed_at
+  }
+}
+
+Table lead_activities {
+  id uuid [pk]
+  lead_id uuid [not null, ref: > leads.id]
+  activity_type_id uuid [not null, ref: > lead_activity_types.id]
+  performed_by uuid [ref: > users.id]
+  occurred_at timestamptz [not null]
+  summary text [not null]
+  sanitized_metadata jsonb
+  created_at timestamptz [not null]
+  indexes {
+    lead_id
+    activity_type_id
+    performed_by
+    occurred_at
+  }
+}
+
+Table lead_notes {
+  id uuid [pk]
+  lead_id uuid [not null, ref: > leads.id]
+  author_user_id uuid [not null, ref: > users.id]
+  note_text text [not null]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+  indexes {
+    lead_id
+    author_user_id
+  }
+}
+
+Table lead_tasks {
+  id uuid [pk]
+  lead_id uuid [not null, ref: > leads.id]
+  assigned_to_user_id uuid [not null, ref: > users.id]
+  status_id uuid [not null, ref: > lead_task_statuses.id]
+  title varchar(255) [not null]
+  description text
+  due_at timestamptz [not null]
+  completed_at timestamptz
+  created_by uuid [not null, ref: > users.id]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+  indexes {
+    lead_id
+    assigned_to_user_id
+    status_id
+    created_by
+    due_at
+    (assigned_to_user_id, status_id, due_at)
+  }
+}
+
+Table tours {
+  id uuid [pk]
+  lead_id uuid [not null, ref: > leads.id]
+  branch_id uuid [not null, ref: > branches.id]
+  sales_manager_user_id uuid [not null, ref: > users.id]
+  scheduled_at timestamptz [not null]
+  attended_at timestamptz
+  outcome_id uuid [ref: > tour_outcomes.id]
+  notes text
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+  indexes {
+    lead_id
+    branch_id
+    sales_manager_user_id
+    outcome_id
+    scheduled_at
+  }
+}
+
+Table lead_duplicates {
+  id uuid [pk]
+  lead_id uuid [not null, ref: > leads.id]
+  duplicate_of_lead_id uuid [not null, ref: > leads.id]
+  detected_by_user_id uuid [ref: > users.id]
+  detected_at timestamptz [not null]
+  reason text
+  resolved_at timestamptz
+  resolved_by_user_id uuid [ref: > users.id]
+  indexes {
+    (lead_id, duplicate_of_lead_id) [unique]
+    duplicate_of_lead_id
+    detected_by_user_id
+    resolved_by_user_id
+  }
+}
+
+// ERP reference tables needed by Admissions
+Table age_groups {
+  id uuid [pk]
+  organization_id uuid [not null, ref: > organizations.id]
+  code varchar(50) [not null]
+  name varchar(120) [not null]
+  minimum_age_months int [not null]
+  maximum_age_months int [not null]
+  is_active boolean [not null, default: true]
+  indexes {
+    (organization_id, code) [unique]
+    organization_id
+  }
+}
+
+Table groups {
+  id uuid [pk]
+  branch_id uuid [not null, ref: > branches.id]
+  age_group_id uuid [not null, ref: > age_groups.id]
+  language_id uuid [not null, ref: > languages.id]
+  code varchar(50) [not null]
+  name varchar(120) [not null]
+  capacity int [not null]
+  is_active boolean [not null, default: true]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+  indexes {
+    (branch_id, code) [unique]
+    branch_id
+    age_group_id
+    language_id
+  }
+  Note: 'SQL CHECK: capacity > 0 AND capacity <= 25. Enrollment creation must enforce actual active occupancy transactionally.'
+}
+
+// ADMISSIONS
+Table guardians {
+  id uuid [pk]
+  organization_id uuid [not null, ref: > organizations.id]
+  first_name varchar(120) [not null]
+  last_name varchar(120) [not null]
+  patronymic varchar(120)
+  normalized_phone_primary varchar(32)
+  workplace varchar(255)
+  job_title varchar(255)
+  created_at timestamptz [not null]
+  created_by uuid [ref: > users.id]
+  updated_at timestamptz [not null]
+  updated_by uuid [ref: > users.id]
+  indexes {
+    organization_id
+    normalized_phone_primary
+    created_by
+    updated_by
+  }
+}
+
+Table guardian_phones {
+  id uuid [pk]
+  guardian_id uuid [not null, ref: > guardians.id]
+  normalized_phone varchar(32) [not null]
+  display_phone varchar(50) [not null]
+  phone_type varchar(40)
+  is_primary boolean [not null, default: false]
+  created_at timestamptz [not null]
+  indexes {
+    guardian_id
+    normalized_phone
+  }
+}
+
+Table guardian_addresses {
+  id uuid [pk]
+  guardian_id uuid [not null, ref: > guardians.id]
+  address_type varchar(40) [not null]
+  country_code varchar(3) [not null, default: 'UZB']
+  region varchar(120)
+  district varchar(120)
+  city varchar(120)
+  street_address text [not null]
+  postal_code varchar(20)
+  is_primary boolean [not null, default: false]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+  indexes {
+    guardian_id
+  }
+}
+
+Table guardian_documents {
+  id uuid [pk]
+  guardian_id uuid [not null, ref: > guardians.id]
+  document_type_id uuid [not null, ref: > document_types.id]
+  series_ciphertext text
+  series_hash varchar(128)
+  series_masked varchar(50)
+  number_ciphertext text [not null]
+  number_hash varchar(128) [not null]
+  number_masked varchar(80) [not null]
+  issued_at date
+  expires_at date
+  stored_file_id uuid [ref: > stored_files.id]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+  indexes {
+    guardian_id
+    document_type_id
+    series_hash
+    number_hash
+    stored_file_id
+    (document_type_id, series_hash, number_hash) [unique]
+  }
+}
+
+Table children {
+  id uuid [pk]
+  organization_id uuid [not null, ref: > organizations.id]
+  first_name varchar(120) [not null]
+  last_name varchar(120) [not null]
+  patronymic varchar(120)
+  date_of_birth date [not null]
+  gender_type_id uuid [ref: > gender_types.id]
+  nationality_id uuid [ref: > nationalities.id]
+  pinfl_ciphertext text
+  pinfl_hash varchar(128)
+  pinfl_masked varchar(30)
+  photo_file_id uuid [ref: > stored_files.id]
+  created_at timestamptz [not null]
+  created_by uuid [ref: > users.id]
+  updated_at timestamptz [not null]
+  updated_by uuid [ref: > users.id]
+  indexes {
+    organization_id
+    gender_type_id
+    nationality_id
+    pinfl_hash [unique]
+    photo_file_id
+    created_by
+    updated_by
+  }
+}
+
+Table child_guardians {
+  child_id uuid [not null, ref: > children.id]
+  guardian_id uuid [not null, ref: > guardians.id]
+  relationship_type_id uuid [not null, ref: > relationship_types.id]
+  is_primary_contact boolean [not null, default: false]
+  is_financially_responsible boolean [not null, default: false]
+  can_pick_up boolean [not null, default: false]
+  created_at timestamptz [not null]
+  indexes {
+    (child_id, guardian_id) [pk]
+    guardian_id
+    relationship_type_id
+  }
+}
+
+Table child_documents {
+  id uuid [pk]
+  child_id uuid [not null, ref: > children.id]
+  document_type_id uuid [not null, ref: > document_types.id]
+  series_ciphertext text
+  series_hash varchar(128)
+  series_masked varchar(50)
+  number_ciphertext text
+  number_hash varchar(128)
+  number_masked varchar(80)
+  issue_date date
+  expiry_date date
+  stored_file_id uuid [ref: > stored_files.id]
+  verification_status_id uuid [not null, ref: > document_verification_statuses.id]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+  indexes {
+    child_id
+    document_type_id
+    series_hash
+    number_hash
+    stored_file_id
+    verification_status_id
+  }
+}
+
+Table admission_statuses {
+  id uuid [pk]
+  organization_id uuid [not null, ref: > organizations.id]
+  code varchar(50) [not null]
+  name varchar(120) [not null]
+  sort_order int [not null]
+  is_active boolean [not null, default: true]
+  indexes {
+    (organization_id, code) [unique]
+    organization_id
+  }
+}
+
+Table admission_applications {
+  id uuid [pk]
+  branch_id uuid [not null, ref: > branches.id]
+  child_id uuid [not null, ref: > children.id]
+  status_id uuid [not null, ref: > admission_statuses.id]
+  preferred_language_id uuid [not null, ref: > languages.id]
+  preferred_age_group_id uuid [ref: > age_groups.id]
+  intended_start_date date [not null]
+  source_type varchar(40) [not null]
+  submitted_at timestamptz [not null]
+  reviewed_by uuid [ref: > users.id]
+  reviewed_at timestamptz
+  notes text
+  created_at timestamptz [not null]
+  created_by uuid [not null, ref: > users.id]
+  updated_at timestamptz [not null]
+  updated_by uuid [ref: > users.id]
+  indexes {
+    branch_id
+    child_id
+    status_id
+    preferred_language_id
+    preferred_age_group_id
+    reviewed_by
+    created_by
+    updated_by
+    (branch_id, status_id)
+  }
+}
+
+Table lead_conversions {
+  id uuid [pk]
+  lead_id uuid [not null, ref: > leads.id]
+  prospective_child_id uuid [ref: > prospective_children.id]
+  child_id uuid [not null, ref: > children.id]
+  admission_application_id uuid [not null, ref: > admission_applications.id]
+  converted_by uuid [not null, ref: > users.id]
+  converted_at timestamptz [not null]
+  indexes {
+    lead_id
+    prospective_child_id [unique]
+    child_id
+    admission_application_id [unique]
+    converted_by
+    (lead_id, child_id) [unique]
+  }
+  Note: 'A single lead may convert multiple prospective children into separate admission applications.'
+}
+
+Table admission_status_history {
+  id uuid [pk]
+  admission_application_id uuid [not null, ref: > admission_applications.id]
+  from_status_id uuid [ref: > admission_statuses.id]
+  to_status_id uuid [not null, ref: > admission_statuses.id]
+  changed_by uuid [not null, ref: > users.id]
+  changed_at timestamptz [not null]
+  note text
+  indexes {
+    admission_application_id
+    from_status_id
+    to_status_id
+    changed_by
+    changed_at
+  }
+}
+
+Table contract_statuses {
+  id uuid [pk]
+  organization_id uuid [not null, ref: > organizations.id]
+  code varchar(50) [not null]
+  name varchar(120) [not null]
+  sort_order int [not null]
+  is_active boolean [not null, default: true]
+  indexes {
+    (organization_id, code) [unique]
+    organization_id
+  }
+}
+
+Table tariffs {
+  id uuid [pk]
+  organization_id uuid [not null, ref: > organizations.id]
+  branch_id uuid [ref: > branches.id]
+  code varchar(50) [not null]
+  name varchar(120) [not null]
+  monthly_amount decimal(19,2) [not null]
+  currency_code varchar(3) [not null, default: 'UZS']
+  valid_from date [not null]
+  valid_until date
+  is_active boolean [not null, default: true]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+  indexes {
+    (organization_id, branch_id, code, valid_from) [unique]
+    organization_id
+    branch_id
+  }
+  Note: 'SQL must handle NULL branch scope with UNIQUE NULLS NOT DISTINCT or equivalent partial unique indexes.'
+}
+
+Table tariff_options {
+  id uuid [pk]
+  tariff_id uuid [not null, ref: > tariffs.id]
+  months_count int [not null]
+  discount_percentage decimal(5,2) [not null]
+  is_active boolean [not null, default: true]
+  indexes {
+    (tariff_id, months_count) [unique]
+    tariff_id
+  }
+}
+
+Table discount_types {
+  id uuid [pk]
+  organization_id uuid [not null, ref: > organizations.id]
+  code varchar(50) [not null]
+  name varchar(120) [not null]
+  discount_method varchar(30) [not null]
+  default_percentage decimal(5,2)
+  is_active boolean [not null, default: true]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+  indexes {
+    (organization_id, code) [unique]
+    organization_id
+  }
+}
+
+Table contracts {
+  id uuid [pk]
+  admission_application_id uuid [not null, ref: > admission_applications.id]
+  child_id uuid [not null, ref: > children.id]
+  branch_id uuid [not null, ref: > branches.id]
+  contract_number varchar(80) [not null, unique]
+  status_id uuid [not null, ref: > contract_statuses.id]
+  signatory_guardian_id uuid [not null, ref: > guardians.id]
+  tariff_id uuid [not null, ref: > tariffs.id]
+  tariff_option_id uuid [ref: > tariff_options.id]
+  billing_period_months_snapshot int [not null, default: 1]
+  prepayment_discount_percentage_snapshot decimal(5,2) [not null, default: 0]
+  currency_code varchar(3) [not null, default: 'UZS']
+  base_amount_snapshot decimal(19,2) [not null]
+  discount_amount_snapshot decimal(19,2) [not null, default: 0]
+  final_amount_snapshot decimal(19,2) [not null]
+  start_date date [not null]
+  printed_at timestamptz
+  signed_at timestamptz
+  contract_file_id uuid [ref: > stored_files.id]
+  created_at timestamptz [not null]
+  created_by uuid [not null, ref: > users.id]
+  updated_at timestamptz [not null]
+  updated_by uuid [ref: > users.id]
+  indexes {
+    admission_application_id
+    child_id
+    branch_id
+    status_id
+    signatory_guardian_id
+    tariff_id
+    tariff_option_id
+    contract_file_id
+    created_by
+    updated_by
+    (branch_id, status_id)
+  }
+  Note: 'One contract per child per admission cycle. Price values are immutable snapshots. SQL checks: all amounts >= 0, percentages 0..100, final_amount_snapshot = base_amount_snapshot - discount_amount_snapshot.'
+}
+
+Table contract_status_history {
+  id uuid [pk]
+  contract_id uuid [not null, ref: > contracts.id]
+  from_status_id uuid [ref: > contract_statuses.id]
+  to_status_id uuid [not null, ref: > contract_statuses.id]
+  changed_by uuid [not null, ref: > users.id]
+  changed_at timestamptz [not null]
+  note text
+  indexes {
+    contract_id
+    from_status_id
+    to_status_id
+    changed_by
+    changed_at
+  }
+}
+
+Table contract_discounts {
+  id uuid [pk]
+  contract_id uuid [not null, ref: > contracts.id]
+  discount_type_id uuid [not null, ref: > discount_types.id]
+  percentage_snapshot decimal(5,2)
+  amount_snapshot decimal(19,2) [not null]
+  reason text
+  approved_by uuid [not null, ref: > users.id]
+  created_at timestamptz [not null]
+  indexes {
+    (contract_id, discount_type_id) [unique]
+    discount_type_id
+    approved_by
+  }
+}
+
+Table contract_price_components {
+  id uuid [pk]
+  contract_id uuid [not null, ref: > contracts.id]
+  component_code varchar(50) [not null]
+  description varchar(255) [not null]
+  quantity decimal(12,2) [not null]
+  unit_amount decimal(19,2) [not null]
+  total_amount decimal(19,2) [not null]
+  created_at timestamptz [not null]
+  indexes {
+    contract_id
+  }
+}
+
+Table invoice_due_date_extensions {
+  id uuid [pk]
+  invoice_id uuid [not null, ref: > invoices.id]
+  old_due_date date [not null]
+  new_due_date date [not null]
+  reason text [not null]
+  approved_by uuid [not null, ref: > users.id]
+  approved_at timestamptz [not null]
+  indexes {
+    invoice_id
+    approved_by
+  }
+  Note: 'Due-date changes belong to invoices because invoices own the payable due_date.'
+}
+
+// MINIMAL BILLING
+Table invoice_statuses {
+  id uuid [pk]
+  code varchar(50) [not null, unique]
+  name varchar(100) [not null]
+  is_final boolean [not null, default: false]
+  is_active boolean [not null, default: true]
+}
+
+Table payment_statuses {
+  id uuid [pk]
+  code varchar(50) [not null, unique]
+  name varchar(100) [not null]
+  is_final boolean [not null, default: false]
+  is_active boolean [not null, default: true]
+}
+
+Table payment_methods {
+  id uuid [pk]
+  code varchar(50) [not null, unique]
+  name varchar(100) [not null]
+  is_active boolean [not null, default: true]
+}
+
+Table invoices {
+  id uuid [pk]
+  branch_id uuid [not null, ref: > branches.id]
+  contract_id uuid [not null, ref: > contracts.id]
+  child_id uuid [not null, ref: > children.id]
+  invoice_number varchar(80) [not null, unique]
+  status_id uuid [not null, ref: > invoice_statuses.id]
+  issue_date date [not null]
+  due_date date [not null]
+  currency_code varchar(3) [not null, default: 'UZS']
+  total_amount decimal(19,2) [not null]
+  created_at timestamptz [not null]
+  created_by uuid [not null, ref: > users.id]
+  updated_at timestamptz [not null]
+  indexes {
+    branch_id
+    contract_id
+    child_id
+    status_id
+    created_by
+    (branch_id, status_id, due_date)
+  }
+}
+
+Table invoice_items {
+  id uuid [pk]
+  invoice_id uuid [not null, ref: > invoices.id]
+  description varchar(255) [not null]
+  quantity decimal(12,2) [not null]
+  unit_amount decimal(19,2) [not null]
+  total_amount decimal(19,2) [not null]
+  created_at timestamptz [not null]
+  indexes {
+    invoice_id
+  }
+}
+
+Table payments {
+  id uuid [pk]
+  branch_id uuid [not null, ref: > branches.id]
+  payment_number varchar(80) [not null, unique]
+  guardian_id uuid [ref: > guardians.id]
+  status_id uuid [not null, ref: > payment_statuses.id]
+  payment_method_id uuid [not null, ref: > payment_methods.id]
+  amount decimal(19,2) [not null]
+  currency_code varchar(3) [not null, default: 'UZS']
+  paid_at timestamptz [not null]
+  confirmed_by uuid [ref: > users.id]
+  external_reference varchar(150)
+  created_at timestamptz [not null]
+  indexes {
+    branch_id
+    guardian_id
+    status_id
+    payment_method_id
+    confirmed_by
+    paid_at
+    external_reference
+  }
+}
+
+Table payment_allocations {
+  id uuid [pk]
+  payment_id uuid [not null, ref: > payments.id]
+  invoice_id uuid [not null, ref: > invoices.id]
+  allocated_amount decimal(19,2) [not null]
+  created_at timestamptz [not null]
+  indexes {
+    (payment_id, invoice_id) [unique]
+    invoice_id
+  }
+}
+
+Table refunds {
+  id uuid [pk]
+  payment_id uuid [not null, ref: > payments.id]
+  amount decimal(19,2) [not null]
+  reason text [not null]
+  recorded_by uuid [not null, ref: > users.id]
+  recorded_at timestamptz [not null]
+  indexes {
+    payment_id
+    recorded_by
+  }
+}
+
+// ERP / STUDENT FOUNDATION
+Table student_statuses {
+  id uuid [pk]
+  code varchar(50) [not null, unique]
+  name varchar(100) [not null]
+  is_active boolean [not null, default: true]
+}
+
+Table students {
+  id uuid [pk]
+  child_id uuid [not null, ref: > children.id]
+  student_number varchar(80) [not null, unique]
+  status_id uuid [not null, ref: > student_statuses.id]
+  activated_at timestamptz [not null]
+  deactivated_at timestamptz
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+  indexes {
+    child_id [unique]
+    status_id
+  }
+}
+
+Table enrollment_statuses {
+  id uuid [pk]
+  code varchar(50) [not null, unique]
+  name varchar(100) [not null]
+  is_active boolean [not null, default: true]
+}
+
+Table enrollments {
+  id uuid [pk]
+  student_id uuid [not null, ref: > students.id]
+  branch_id uuid [not null, ref: > branches.id]
+  group_id uuid [not null, ref: > groups.id]
+  admission_application_id uuid [not null, ref: > admission_applications.id]
+  contract_id uuid [not null, ref: > contracts.id]
+  status_id uuid [not null, ref: > enrollment_statuses.id]
+  start_date date [not null]
+  end_date date
+  created_at timestamptz [not null]
+  created_by uuid [not null, ref: > users.id]
+  updated_at timestamptz [not null]
+  indexes {
+    student_id
+    branch_id
+    group_id
+    admission_application_id
+    contract_id
+    status_id
+    created_by
+    (group_id, status_id)
+    (student_id, start_date)
+  }
+  Note: 'Activation requires a valid contract, confirmed required payment, and administrator group assignment. SQL must prevent more than one active enrollment per student.'
+}
+
+// TELEPHONY
+Table call_directions {
+  id uuid [pk]
+  code varchar(30) [not null, unique]
+  name varchar(80) [not null]
+}
+
+Table call_dispositions {
+  id uuid [pk]
+  code varchar(50) [not null, unique]
+  name varchar(100) [not null]
+  is_missed boolean [not null, default: false]
+}
+
+Table call_event_types {
+  id uuid [pk]
+  code varchar(50) [not null, unique]
+  name varchar(100) [not null]
+}
+
+Table webhook_statuses {
+  id uuid [pk]
+  code varchar(50) [not null, unique]
+  name varchar(100) [not null]
+  is_final boolean [not null, default: false]
+}
+
+Table pbx_configs {
+  id uuid [pk]
+  organization_id uuid [not null, ref: > organizations.id]
+  branch_id uuid [ref: > branches.id]
+  name varchar(120) [not null]
+  base_url varchar(500) [not null]
+  credential_secret_reference varchar(255) [not null]
+  is_active boolean [not null, default: true]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+  indexes {
+    organization_id
+    branch_id
+  }
+}
+
+Table extensions {
+  id uuid [pk]
+  pbx_config_id uuid [not null, ref: > pbx_configs.id]
+  user_id uuid [ref: > users.id]
+  extension_number varchar(30) [not null]
+  display_name varchar(120)
+  is_active boolean [not null, default: true]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+  indexes {
+    (pbx_config_id, extension_number) [unique]
+    user_id
+  }
+}
+
+Table sip_accounts {
+  id uuid [pk]
+  pbx_config_id uuid [not null, ref: > pbx_configs.id]
+  extension_id uuid [not null, ref: > extensions.id]
+  sip_username varchar(120) [not null]
+  secret_reference varchar(255) [not null]
+  is_active boolean [not null, default: true]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+  indexes {
+    (pbx_config_id, sip_username) [unique]
+    extension_id
+  }
+}
+
+Table phone_numbers {
+  id uuid [pk]
+  pbx_config_id uuid [not null, ref: > pbx_configs.id]
+  normalized_number varchar(32) [not null]
+  display_number varchar(50) [not null]
+  is_primary boolean [not null, default: false]
+  is_active boolean [not null, default: true]
+  indexes {
+    (pbx_config_id, normalized_number) [unique]
+  }
+}
+
+Table call_sessions {
+  id uuid [pk]
+  pbx_config_id uuid [not null, ref: > pbx_configs.id]
+  external_call_id varchar(150) [not null]
+  direction_id uuid [not null, ref: > call_directions.id]
+  disposition_id uuid [ref: > call_dispositions.id]
+  from_normalized_number varchar(32) [not null]
+  to_normalized_number varchar(32) [not null]
+  started_at timestamptz [not null]
+  answered_at timestamptz
+  ended_at timestamptz
+  duration_seconds int [not null, default: 0]
+  created_at timestamptz [not null]
+  indexes {
+    (pbx_config_id, external_call_id) [unique]
+    direction_id
+    disposition_id
+    from_normalized_number
+    to_normalized_number
+    started_at
+  }
+}
+
+Table call_participants {
+  id uuid [pk]
+  call_session_id uuid [not null, ref: > call_sessions.id]
+  user_id uuid [ref: > users.id]
+  extension_id uuid [ref: > extensions.id]
+  normalized_phone varchar(32)
+  participant_role varchar(50) [not null]
+  joined_at timestamptz
+  left_at timestamptz
+  indexes {
+    call_session_id
+    user_id
+    extension_id
+    normalized_phone
+  }
+}
+
+Table call_events {
+  id uuid [pk]
+  call_session_id uuid [not null, ref: > call_sessions.id]
+  external_event_id varchar(150)
+  event_type_id uuid [not null, ref: > call_event_types.id]
+  occurred_at timestamptz [not null]
+  sanitized_metadata jsonb
+  created_at timestamptz [not null]
+  indexes {
+    call_session_id
+    external_event_id
+    event_type_id
+    occurred_at
+  }
+}
+
+Table call_recordings {
+  id uuid [pk]
+  call_session_id uuid [not null, ref: > call_sessions.id]
+  stored_file_id uuid [ref: > stored_files.id]
+  external_recording_id varchar(150)
+  recording_url varchar(1000)
+  duration_seconds int
+  created_at timestamptz [not null]
+  indexes {
+    call_session_id
+    stored_file_id
+    external_recording_id
+  }
+}
+
+Table lead_calls {
+  lead_id uuid [not null, ref: > leads.id]
+  call_session_id uuid [not null, ref: > call_sessions.id]
+  linked_by uuid [ref: > users.id]
+  linked_at timestamptz [not null]
+  indexes {
+    (lead_id, call_session_id) [pk]
+    call_session_id
+    linked_by
+  }
+}
+
+Table webhook_events {
+  id uuid [pk]
+  pbx_config_id uuid [not null, ref: > pbx_configs.id]
+  external_event_id varchar(150) [not null]
+  status_id uuid [not null, ref: > webhook_statuses.id]
+  payload_hash varchar(128) [not null]
+  received_at timestamptz [not null]
+  processed_at timestamptz
+  error_message text
+  indexes {
+    (pbx_config_id, external_event_id) [unique]
+    status_id
+    received_at
+    payload_hash
+  }
+}

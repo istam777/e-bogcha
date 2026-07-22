@@ -2,7 +2,7 @@
 
 Internal kindergarten management platform for Oxu Kids. The system will manage the complete operational flow from CRM lead acquisition through admissions, payment, student enrollment, and later ERP processes.
 
-> Project status: architecture and repository foundation. Application bootstrap has not yet been implemented.
+> Project status: the Spring Boot backend bootstrap and PostgreSQL/Flyway database foundation through V12 are implemented. The database foundation covers Core/IAM, Files/Audit/Settings, CRM, and Telephony schemas, with PostgreSQL Testcontainers integration tests. Production business services and APIs, frontend workflows, Admissions, Finance, and later ERP functionality remain deferred unless explicitly implemented in a later task.
 
 ## Approved architecture
 
@@ -84,4 +84,61 @@ Implementation work must be performed through scoped branches and pull requests.
 
 ## Local development
 
-Local start commands will be added during the Core Platform Bootstrap task together with the Maven wrapper, frontend package configuration, Docker Compose stack, health checks, and verified setup instructions. Commands are intentionally not documented before they exist and are tested.
+### Prerequisites
+
+- Java 21 (OpenJDK or equivalent)
+- Docker Desktop (with Docker Compose)
+- Node.js 18+ (for frontend, when implemented)
+
+### Setup
+
+**Step 1:** Copy the environment template
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` and set appropriate values for local development. The default values work for most cases, but review database credentials and other sensitive settings.
+
+**Step 2:** Start infrastructure services
+
+```bash
+docker compose --env-file .env -f infrastructure/docker/compose.yml up -d
+```
+
+This starts PostgreSQL 17 with persistent storage. Verify the container is healthy:
+
+```bash
+docker ps
+```
+
+**Step 3:** Start the backend application
+
+```bash
+cd backend
+./gradlew bootRun       # Unix/macOS/Linux
+.\gradlew.bat bootRun   # Windows
+```
+
+The backend API will be available at `http://localhost:8080`.
+
+**Health check:** `http://localhost:8080/actuator/health`
+
+### Stopping services
+
+```bash
+# Stop the backend: Ctrl+C in the terminal running bootRun
+
+# Stop infrastructure:
+docker compose --env-file .env -f infrastructure/docker/compose.yml down
+```
+
+### Running tests
+
+```bash
+cd backend
+./gradlew test          # Unix/macOS/Linux
+.\gradlew.bat test      # Windows
+```
+
+Tests use Testcontainers and do not require the Docker Compose stack to be running.

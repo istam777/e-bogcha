@@ -101,4 +101,24 @@ version BIGINT NOT NULL
 - Every destructive change requires a documented rollout and rollback strategy.
 - Seed data is separated from structural migrations when practical.
 
+## Core reference seed proposal
+
+DB-001A requires minimum system-owned core seed identities. The approved
+[CORE_REFERENCE_DATA_PROPOSAL.md](CORE_REFERENCE_DATA_PROPOSAL.md) contains a
+complete 16-row tuple matrix across five tables. Status: APPROVED. The exact
+tuple matrix remains fixed for V13.
+
+### V13 delivery status
+
+V13 is implemented and DB-001C-05D = APPROVED. Implementation commit
+`aaaee9c92600d3c36de37d825c778114e16d9e3c` was pushed to
+`origin/feature/database-foundation`; the remote branch and PR #2 head both
+match that commit. Full validation passed 75/75 tests with 0 failures, 0 errors,
+and 0 skipped.
+
+GitHub checks are not configured. Review thread `PRRT_kwDOTcawyc6S0eZR`
+remains unresolved, the PR description update is pending, and merge readiness
+has not yet been declared. Final review and the merge decision remain pending
+dedicated workflows.
+
 Detailed table definitions and ER diagrams will be added incrementally with each module before implementation.
