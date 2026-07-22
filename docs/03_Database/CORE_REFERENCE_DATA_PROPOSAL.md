@@ -185,12 +185,10 @@ Approved scope: exactly 16 rows across five tables:
 - `document_types`; and
 - `document_verification_statuses`.
 
-The approved UUID, code, name, flag, sort-order, and `applies_to` values are now fixed for the planned V13 implementation. V13 has not been created or implemented, and implementation requires separate authorization.
+The approved UUID, code, name, flag, sort-order, and `applies_to` values are fixed for V13. The V13 migration and its integration-test updates now exist in the local working tree and await read-only implementation review. They have not been committed or pushed.
 
-PR #2 remains not ready to merge until all of the following are complete:
+PR #2 has not been updated and remains not ready to merge until all of the following are complete:
 
-- V13 implementation;
-- integration-test update;
 - read-only implementation review;
 - implementation commit and push;
 - PR description update;
@@ -201,4 +199,4 @@ PR #2 remains not ready to merge until all of the following are complete:
 
 Status: APPROVED
 
-The exact 16-row matrix is approved as recorded above. V13 has not been created, and no existing migration or integration test has been changed. The PR #2 review finding remains technically unresolved until the approved remediation is implemented, validated, pushed, and re-reviewed.
+The exact 16-row matrix remains approved as recorded above. V13 is implemented only in the local working tree and awaits read-only review; it has not been committed or pushed. PR #2 has not been updated, its GitHub review thread remains unresolved, and the PR remains not ready to merge.

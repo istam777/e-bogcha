@@ -66,7 +66,7 @@ class DatabaseInfrastructureIntegrationTest {
     private ApplicationContext applicationContext;
 
     @Test
-    void appliesOnlyTheApprovedSchemasAndSeedsThroughV12() {
+    void appliesOnlyTheApprovedSchemasAndSeedsThroughV13() {
         Integer connectivityCheck = jdbcTemplate.queryForObject("SELECT 1", Integer.class);
         assertThat(connectivityCheck).isEqualTo(1);
 
@@ -78,7 +78,49 @@ class DatabaseInfrastructureIntegrationTest {
         assertThat(flyway.info().applied())
                 .extracting(migration -> migration.getVersion().getVersion())
                 .containsExactly(
-                        "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12");
+                        "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13");
+
+        List<String> migrationScripts = jdbcTemplate.queryForList(
+                """
+                SELECT script
+                  FROM flyway_schema_history
+                 WHERE version IS NOT NULL
+                 ORDER BY installed_rank
+                """,
+                String.class);
+        assertThat(migrationScripts).containsExactly(
+                "V1__create_foundation_schema.sql",
+                "V2__enforce_audit_log_immutability.sql",
+                "V3__seed_foundation_reference_data.sql",
+                "V4__create_core_reference_schema.sql",
+                "V5__create_identity_and_staff_schema.sql",
+                "V6__create_file_and_settings_schema.sql",
+                "V7__create_crm_reference_schema.sql",
+                "V8__create_crm_lead_core_schema.sql",
+                "V9__create_crm_workflow_schema.sql",
+                "V10__create_telephony_configuration_schema.sql",
+                "V11__create_telephony_calls_schema.sql",
+                "V12__seed_crm_and_telephony_reference_data.sql",
+                "V13__seed_core_reference_data.sql");
+
+        Integer failedMigrationCount = jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM flyway_schema_history WHERE NOT success", Integer.class);
+        assertThat(failedMigrationCount).isZero();
+
+        Integer repeatableMigrationCount = jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM flyway_schema_history WHERE version IS NULL", Integer.class);
+        assertThat(repeatableMigrationCount).isZero();
+
+        String latestMigrationVersion = jdbcTemplate.queryForObject(
+                """
+                SELECT version
+                  FROM flyway_schema_history
+                 WHERE success AND version IS NOT NULL
+                 ORDER BY installed_rank DESC
+                 LIMIT 1
+                """,
+                String.class);
+        assertThat(latestMigrationVersion).isEqualTo("13");
 
         List<String> foundationTables = jdbcTemplate.queryForList(
                 """
@@ -264,12 +306,7 @@ class DatabaseInfrastructureIntegrationTest {
 
         Integer unseededReferenceRowCount = jdbcTemplate.queryForObject(
                 """
-                SELECT (SELECT count(*) FROM languages)
-                     + (SELECT count(*) FROM nationalities)
-                     + (SELECT count(*) FROM gender_types)
-                     + (SELECT count(*) FROM relationship_types)
-                     + (SELECT count(*) FROM document_types)
-                     + (SELECT count(*) FROM document_verification_statuses)
+                SELECT (SELECT count(*) FROM nationalities)
                      + (SELECT count(*) FROM lead_sources)
                      + (SELECT count(*) FROM lead_statuses)
                      + (SELECT count(*) FROM lost_reasons)
@@ -302,12 +339,13 @@ class DatabaseInfrastructureIntegrationTest {
     }
 
     @Test
-    void recordsV12ExactlyOnceAsASuccessfulFlywayMigration() {
+    void recordsV12AndV13ExactlyOnceAsSuccessfulFlywayMigrations() {
         List<MigrationHistory> history = jdbcTemplate.query(
                 """
                 SELECT version, description, script, success
                   FROM flyway_schema_history
-                 WHERE version = '12'
+                 WHERE version IN ('12', '13')
+                 ORDER BY version::INTEGER
                 """,
                 (resultSet, rowNumber) -> new MigrationHistory(
                         resultSet.getString("version"),
@@ -315,15 +353,21 @@ class DatabaseInfrastructureIntegrationTest {
                         resultSet.getString("script"),
                         resultSet.getBoolean("success")));
 
-        assertThat(history).containsExactly(new MigrationHistory(
-                "12",
-                "seed crm and telephony reference data",
-                "V12__seed_crm_and_telephony_reference_data.sql",
-                true));
+        assertThat(history).containsExactly(
+                new MigrationHistory(
+                        "12",
+                        "seed crm and telephony reference data",
+                        "V12__seed_crm_and_telephony_reference_data.sql",
+                        true),
+                new MigrationHistory(
+                        "13",
+                        "seed core reference data",
+                        "V13__seed_core_reference_data.sql",
+                        true));
     }
 
     @Test
-    void seedsExactlyTheApprovedGlobalCrmAndTelephonyReferenceData() {
+    void seedsExactlyTheApprovedGlobalReferenceData() {
         List<TaskStatusSeed> taskStatuses = jdbcTemplate.query(
                 """
                 SELECT id, code, name, is_closed, is_active
@@ -435,6 +479,178 @@ class DatabaseInfrastructureIntegrationTest {
                 """,
                 Integer.class);
         assertThat(totalSeedCount).isEqualTo(28);
+
+        List<CoreReferenceSeed> coreReferenceSeeds = queryCoreReferenceSeeds();
+        assertThat(coreReferenceSeeds).containsExactly(
+                coreReferenceSeed(
+                        "languages",
+                        "fb5c59da-9ce9-4b1c-8093-708df6dff228",
+                        "UZ",
+                        "Uzbek",
+                        true,
+                        10,
+                        null,
+                        null),
+                coreReferenceSeed(
+                        "languages",
+                        "a5743740-acbf-4356-b079-b6b9fe75f517",
+                        "RU",
+                        "Russian",
+                        true,
+                        20,
+                        null,
+                        null),
+                coreReferenceSeed(
+                        "gender_types",
+                        "82cc170a-af63-4aff-8777-b59b86fd79a4",
+                        "MALE",
+                        "Male",
+                        true,
+                        null,
+                        null,
+                        null),
+                coreReferenceSeed(
+                        "gender_types",
+                        "5433e6c3-5497-4d02-9390-1a0617a0cba8",
+                        "FEMALE",
+                        "Female",
+                        true,
+                        null,
+                        null,
+                        null),
+                coreReferenceSeed(
+                        "relationship_types",
+                        "0021c600-8837-4088-91d6-a8d664c4101f",
+                        "FATHER",
+                        "Father",
+                        true,
+                        null,
+                        null,
+                        null),
+                coreReferenceSeed(
+                        "relationship_types",
+                        "de3ccd45-2fa6-4edc-bfde-bba909cd9d82",
+                        "MOTHER",
+                        "Mother",
+                        true,
+                        null,
+                        null,
+                        null),
+                coreReferenceSeed(
+                        "relationship_types",
+                        "48dba5fe-77b8-4df7-a691-3a6b77614ed8",
+                        "GUARDIAN",
+                        "Guardian",
+                        true,
+                        null,
+                        null,
+                        null),
+                coreReferenceSeed(
+                        "document_types",
+                        "6c75f6d0-6ec3-4092-b859-94ee08425967",
+                        "BIRTH_CERTIFICATE",
+                        "Birth Certificate",
+                        true,
+                        null,
+                        "CHILD",
+                        null),
+                coreReferenceSeed(
+                        "document_types",
+                        "a77a89b3-371f-4caf-bdcb-6d502bc3b720",
+                        "PASSPORT",
+                        "Passport",
+                        true,
+                        null,
+                        "PERSON",
+                        null),
+                coreReferenceSeed(
+                        "document_types",
+                        "dd214a9e-daaa-42a6-887f-a2f107cf3e2f",
+                        "ID_CARD",
+                        "ID Card",
+                        true,
+                        null,
+                        "PERSON",
+                        null),
+                coreReferenceSeed(
+                        "document_types",
+                        "8905ff1c-b3e2-406b-85bc-eed1e27dad02",
+                        "PINFL",
+                        "PINFL",
+                        true,
+                        null,
+                        "PERSON",
+                        null),
+                coreReferenceSeed(
+                        "document_types",
+                        "7642acca-0b62-4a06-b9be-dcc573391ba5",
+                        "MEDICAL_CERTIFICATE",
+                        "Medical Certificate",
+                        true,
+                        null,
+                        "CHILD",
+                        null),
+                coreReferenceSeed(
+                        "document_types",
+                        "804ce20a-6653-4ac5-8e4a-86f8bbcc544d",
+                        "PHOTO",
+                        "Photo",
+                        true,
+                        null,
+                        "PERSON",
+                        null),
+                coreReferenceSeed(
+                        "document_verification_statuses",
+                        "0c412202-9976-49d0-96e5-c010c5caf731",
+                        "PENDING",
+                        "Pending",
+                        true,
+                        null,
+                        null,
+                        false),
+                coreReferenceSeed(
+                        "document_verification_statuses",
+                        "40e8acf6-186a-4bc5-b050-0ab076032f20",
+                        "VERIFIED",
+                        "Verified",
+                        true,
+                        null,
+                        null,
+                        true),
+                coreReferenceSeed(
+                        "document_verification_statuses",
+                        "90a8cec4-b402-466d-a6d5-4474517d9312",
+                        "REJECTED",
+                        "Rejected",
+                        true,
+                        null,
+                        null,
+                        true));
+
+        assertThat(coreReferenceSeeds).hasSize(16).allSatisfy(seed -> {
+            assertThat(seed.id().version()).isEqualTo(4);
+            assertThat(seed.id().variant()).isEqualTo(2);
+            assertThat(seed.active()).isTrue();
+        });
+        assertThat(coreReferenceSeeds)
+                .extracting(CoreReferenceSeed::id)
+                .doesNotHaveDuplicates();
+        assertThat(coreReferenceSeeds)
+                .extracting(seed -> seed.tableName() + "|" + seed.code())
+                .doesNotHaveDuplicates();
+        assertThat(coreReferenceSeeds).filteredOn(seed -> seed.tableName().equals("languages"))
+                .hasSize(2);
+        assertThat(coreReferenceSeeds).filteredOn(seed -> seed.tableName().equals("gender_types"))
+                .hasSize(2);
+        assertThat(coreReferenceSeeds)
+                .filteredOn(seed -> seed.tableName().equals("relationship_types"))
+                .hasSize(3);
+        assertThat(coreReferenceSeeds)
+                .filteredOn(seed -> seed.tableName().equals("document_types"))
+                .hasSize(6);
+        assertThat(coreReferenceSeeds)
+                .filteredOn(seed -> seed.tableName().equals("document_verification_statuses"))
+                .hasSize(3);
     }
 
     @Test
@@ -470,7 +686,7 @@ class DatabaseInfrastructureIntegrationTest {
     }
 
     @Test
-    void v12UsesOnlyStrictExplicitInsertStatementsAndFixedUuids() throws Exception {
+    void v12AndV13UseOnlyStrictExplicitInsertStatementsAndFixedUuids() throws Exception {
         String migration = new ClassPathResource(
                         "db/migration/V12__seed_crm_and_telephony_reference_data.sql")
                 .getContentAsString(StandardCharsets.UTF_8);
@@ -530,6 +746,69 @@ class DatabaseInfrastructureIntegrationTest {
                 .matcher(migration);
         List<String> uuids = uuidMatcher.results().map(result -> result.group()).toList();
         assertThat(uuids).hasSize(28).doesNotHaveDuplicates();
+
+        String v13Migration = new ClassPathResource(
+                        "db/migration/V13__seed_core_reference_data.sql")
+                .getContentAsString(StandardCharsets.UTF_8);
+        List<String> v13Statements = Arrays.stream(v13Migration.split(";"))
+                .map(String::trim)
+                .filter(statement -> !statement.isEmpty())
+                .toList();
+
+        assertThat(v13Statements).hasSize(5).allMatch(statement ->
+                statement.regionMatches(true, 0, "INSERT INTO", 0, "INSERT INTO".length()));
+        List<String> v13TargetTables = Pattern.compile("(?i)INSERT\\s+INTO\\s+([a-z_]+)")
+                .matcher(v13Migration)
+                .results()
+                .map(result -> result.group(1).toLowerCase())
+                .toList();
+        assertThat(v13TargetTables).containsExactly(
+                "languages",
+                "gender_types",
+                "relationship_types",
+                "document_types",
+                "document_verification_statuses");
+
+        String normalizedV13Migration = v13Migration.replaceAll("\\s+", " ");
+        assertThat(normalizedV13Migration).contains(
+                "INSERT INTO languages ( id, code, name, is_active, sort_order )",
+                "INSERT INTO gender_types ( id, code, name, is_active )",
+                "INSERT INTO relationship_types ( id, code, name, is_active )",
+                "INSERT INTO document_types ( id, code, name, applies_to, is_active )",
+                "INSERT INTO document_verification_statuses ( id, code, name, is_final, is_active )");
+        assertThat(v13Migration.toUpperCase()).doesNotContain(
+                "ON CONFLICT",
+                "MERGE ",
+                "WHERE NOT EXISTS",
+                "CREATE ",
+                "ALTER ",
+                "DROP ",
+                "TRUNCATE ",
+                "UPDATE ",
+                "DELETE ",
+                "SELECT ",
+                "DO ",
+                "BEGIN",
+                "EXCEPTION",
+                "TEMPORARY ",
+                "GEN_RANDOM_UUID",
+                "UUID_GENERATE");
+        assertThat(v13Migration.toLowerCase()).doesNotContain(
+                "nationalities",
+                "organization_id",
+                "branch_id",
+                "lead_sources",
+                "lead_statuses",
+                "lost_reasons",
+                "tour_outcomes",
+                "pbx_configs",
+                "sip_accounts");
+
+        Matcher v13UuidMatcher = Pattern.compile(
+                        "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}")
+                .matcher(v13Migration);
+        List<String> v13Uuids = v13UuidMatcher.results().map(result -> result.group()).toList();
+        assertThat(v13Uuids).hasSize(16).doesNotHaveDuplicates();
     }
 
     @Test
@@ -565,6 +844,67 @@ class DatabaseInfrastructureIntegrationTest {
                             + ".flyway_schema_history WHERE version = '12' AND success",
                     Integer.class);
             assertThat(appliedV12Count).isZero();
+        } finally {
+            jdbcTemplate.execute("DROP SCHEMA IF EXISTS " + schemaName + " CASCADE");
+        }
+    }
+
+    @Test
+    void v13FailsStrictlyWhenApprovedLanguageCodeAlreadyHasAnotherIdentity() {
+        String schemaName = "v13_conflict_" + UUID.randomUUID().toString().replace("-", "");
+        Flyway throughV12 = flywayForSchema(schemaName, MigrationVersion.fromVersion("12"));
+
+        try {
+            throughV12.migrate();
+            Integer appliedV12Count = jdbcTemplate.queryForObject(
+                    "SELECT count(*) FROM " + schemaName
+                            + ".flyway_schema_history WHERE version = '12' AND success",
+                    Integer.class);
+            assertThat(appliedV12Count).isEqualTo(1);
+
+            UUID conflictingId = UUID.randomUUID();
+            jdbcTemplate.update(
+                    "INSERT INTO " + schemaName
+                            + ".languages (id, code, name, is_active, sort_order)"
+                            + " VALUES (?, 'UZ', 'Disposable conflicting pre-V13 language', FALSE, 999)",
+                    conflictingId);
+
+            Flyway throughV13 = flywayForSchema(schemaName, MigrationVersion.fromVersion("13"));
+            assertThatThrownBy(throughV13::migrate)
+                    .isInstanceOfSatisfying(
+                            FlywayException.class,
+                            exception -> assertThat(causeChainContainsSqlState(exception, "23505"))
+                                    .as("Flyway failure cause chain contains PostgreSQL unique-violation SQLSTATE")
+                                    .isTrue());
+
+            Map<String, Object> preservedConflict = jdbcTemplate.queryForMap(
+                    "SELECT id, name, is_active, sort_order FROM " + schemaName
+                            + ".languages WHERE code = 'UZ'");
+            assertThat(preservedConflict.get("id")).isEqualTo(conflictingId);
+            assertThat(preservedConflict.get("name"))
+                    .isEqualTo("Disposable conflicting pre-V13 language");
+            assertThat(preservedConflict.get("is_active")).isEqualTo(false);
+            assertThat(preservedConflict.get("sort_order")).isEqualTo(999);
+
+            Integer approvedUzCount = jdbcTemplate.queryForObject(
+                    "SELECT count(*) FROM " + schemaName
+                            + ".languages WHERE id = 'fb5c59da-9ce9-4b1c-8093-708df6dff228'",
+                    Integer.class);
+            assertThat(approvedUzCount).isZero();
+
+            Integer appliedV13Count = jdbcTemplate.queryForObject(
+                    "SELECT count(*) FROM " + schemaName
+                            + ".flyway_schema_history WHERE version = '13' AND success",
+                    Integer.class);
+            assertThat(appliedV13Count).isZero();
+
+            Map<String, Object> primarySchemaUz = jdbcTemplate.queryForMap(
+                    "SELECT id, name, is_active, sort_order FROM languages WHERE code = 'UZ'");
+            assertThat(primarySchemaUz.get("id"))
+                    .isEqualTo(UUID.fromString("fb5c59da-9ce9-4b1c-8093-708df6dff228"));
+            assertThat(primarySchemaUz.get("name")).isEqualTo("Uzbek");
+            assertThat(primarySchemaUz.get("is_active")).isEqualTo(true);
+            assertThat(primarySchemaUz.get("sort_order")).isEqualTo(10);
         } finally {
             jdbcTemplate.execute("DROP SCHEMA IF EXISTS " + schemaName + " CASCADE");
         }
@@ -3245,6 +3585,78 @@ class DatabaseInfrastructureIntegrationTest {
                 .load();
     }
 
+    private List<CoreReferenceSeed> queryCoreReferenceSeeds() {
+        return jdbcTemplate.query(
+                """
+                SELECT table_name, id, code, name, is_active, sort_order, applies_to, is_final
+                  FROM (
+                        SELECT 1 AS table_order,
+                               CASE code WHEN 'UZ' THEN 1 WHEN 'RU' THEN 2 ELSE 999 END AS row_order,
+                               'languages' AS table_name,
+                               id, code, name, is_active, sort_order,
+                               NULL::VARCHAR AS applies_to,
+                               NULL::BOOLEAN AS is_final
+                          FROM languages
+                        UNION ALL
+                        SELECT 2,
+                               CASE code WHEN 'MALE' THEN 1 WHEN 'FEMALE' THEN 2 ELSE 999 END,
+                               'gender_types',
+                               id, code, name, is_active, NULL::INTEGER,
+                               NULL::VARCHAR, NULL::BOOLEAN
+                          FROM gender_types
+                        UNION ALL
+                        SELECT 3,
+                               CASE code
+                                   WHEN 'FATHER' THEN 1
+                                   WHEN 'MOTHER' THEN 2
+                                   WHEN 'GUARDIAN' THEN 3
+                                   ELSE 999
+                               END,
+                               'relationship_types',
+                               id, code, name, is_active, NULL::INTEGER,
+                               NULL::VARCHAR, NULL::BOOLEAN
+                          FROM relationship_types
+                        UNION ALL
+                        SELECT 4,
+                               CASE code
+                                   WHEN 'BIRTH_CERTIFICATE' THEN 1
+                                   WHEN 'PASSPORT' THEN 2
+                                   WHEN 'ID_CARD' THEN 3
+                                   WHEN 'PINFL' THEN 4
+                                   WHEN 'MEDICAL_CERTIFICATE' THEN 5
+                                   WHEN 'PHOTO' THEN 6
+                                   ELSE 999
+                               END,
+                               'document_types',
+                               id, code, name, is_active, NULL::INTEGER,
+                               applies_to, NULL::BOOLEAN
+                          FROM document_types
+                        UNION ALL
+                        SELECT 5,
+                               CASE code
+                                   WHEN 'PENDING' THEN 1
+                                   WHEN 'VERIFIED' THEN 2
+                                   WHEN 'REJECTED' THEN 3
+                                   ELSE 999
+                               END,
+                               'document_verification_statuses',
+                               id, code, name, is_active, NULL::INTEGER,
+                               NULL::VARCHAR, is_final
+                          FROM document_verification_statuses
+                       ) approved_core_references
+                 ORDER BY table_order, row_order
+                """,
+                (resultSet, rowNumber) -> new CoreReferenceSeed(
+                        resultSet.getString("table_name"),
+                        resultSet.getObject("id", UUID.class),
+                        resultSet.getString("code"),
+                        resultSet.getString("name"),
+                        resultSet.getBoolean("is_active"),
+                        resultSet.getObject("sort_order", Integer.class),
+                        resultSet.getString("applies_to"),
+                        resultSet.getObject("is_final", Boolean.class)));
+    }
+
     private List<ReferenceSeed> queryReferenceSeeds(String tableName) {
         return jdbcTemplate.query(
                 "SELECT id, code, name FROM "
@@ -3287,6 +3699,26 @@ class DatabaseInfrastructureIntegrationTest {
 
     private ReferenceSeed referenceSeed(String id, String code, String name) {
         return new ReferenceSeed(UUID.fromString(id), code, name);
+    }
+
+    private CoreReferenceSeed coreReferenceSeed(
+            String tableName,
+            String id,
+            String code,
+            String name,
+            boolean active,
+            Integer sortOrder,
+            String appliesTo,
+            Boolean finalStatus) {
+        return new CoreReferenceSeed(
+                tableName,
+                UUID.fromString(id),
+                code,
+                name,
+                active,
+                sortOrder,
+                appliesTo,
+                finalStatus);
     }
 
     private FlaggedReferenceSeed flaggedReferenceSeed(
@@ -5376,6 +5808,16 @@ class DatabaseInfrastructureIntegrationTest {
             UUID id, String code, String name, boolean closed, boolean active) {}
 
     private record ActiveReferenceSeed(UUID id, String code, String name, boolean active) {}
+
+    private record CoreReferenceSeed(
+            String tableName,
+            UUID id,
+            String code,
+            String name,
+            boolean active,
+            Integer sortOrder,
+            String appliesTo,
+            Boolean finalStatus) {}
 
     private record ReferenceSeed(UUID id, String code, String name) {}
 

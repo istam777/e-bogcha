@@ -106,11 +106,11 @@ version BIGINT NOT NULL
 DB-001A requires minimum system-owned core seed identities. The approved
 [CORE_REFERENCE_DATA_PROPOSAL.md](CORE_REFERENCE_DATA_PROPOSAL.md) contains a
 complete 16-row tuple matrix across five tables. Status: APPROVED. The exact
-tuple matrix is fixed for future V13 implementation.
+tuple matrix remains fixed for V13.
 
-V13 has not yet been created. PR #2 remains not ready to merge until V13 is
-implemented, integration tests are updated, validation passes, the implementation
-is committed and pushed, the PR description is updated, the existing review
-thread is remediated, and the implementation passes final PR re-review.
+V13 is implemented locally with its integration-test updates and awaits
+read-only review; it has not been committed or pushed. PR #2 remains not ready
+to merge while test review, commit, push, PR description update, review-thread
+remediation, and final PR re-review remain pending.
 
 Detailed table definitions and ER diagrams will be added incrementally with each module before implementation.
