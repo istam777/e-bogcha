@@ -3,17 +3,24 @@ package uz.oxukids.ebogcha;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.flywaydb.core.Flyway;
+import org.flywaydb.core.api.FlywayException;
+import org.flywaydb.core.api.MigrationVersion;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationContext;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -54,7 +61,7 @@ class DatabaseInfrastructureIntegrationTest {
     private ApplicationContext applicationContext;
 
     @Test
-    void appliesOnlyTheApprovedSchemasThroughV11() {
+    void appliesOnlyTheApprovedSchemasAndSeedsThroughV12() {
         Integer connectivityCheck = jdbcTemplate.queryForObject("SELECT 1", Integer.class);
         assertThat(connectivityCheck).isEqualTo(1);
 
@@ -65,7 +72,8 @@ class DatabaseInfrastructureIntegrationTest {
         assertThat(flyway.info().pending()).isEmpty();
         assertThat(flyway.info().applied())
                 .extracting(migration -> migration.getVersion().getVersion())
-                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11");
+                .containsExactly(
+                        "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12");
 
         List<String> foundationTables = jdbcTemplate.queryForList(
                 """
@@ -261,8 +269,6 @@ class DatabaseInfrastructureIntegrationTest {
                      + (SELECT count(*) FROM lead_statuses)
                      + (SELECT count(*) FROM lost_reasons)
                      + (SELECT count(*) FROM tour_outcomes)
-                     + (SELECT count(*) FROM lead_task_statuses)
-                     + (SELECT count(*) FROM lead_activity_types)
                      + (SELECT count(*) FROM leads)
                      + (SELECT count(*) FROM lead_phones)
                      + (SELECT count(*) FROM prospective_children)
@@ -273,10 +279,6 @@ class DatabaseInfrastructureIntegrationTest {
                      + (SELECT count(*) FROM lead_tasks)
                      + (SELECT count(*) FROM tours)
                      + (SELECT count(*) FROM lead_duplicates)
-                     + (SELECT count(*) FROM call_directions)
-                     + (SELECT count(*) FROM call_dispositions)
-                     + (SELECT count(*) FROM call_event_types)
-                     + (SELECT count(*) FROM webhook_statuses)
                      + (SELECT count(*) FROM pbx_configs)
                      + (SELECT count(*) FROM extensions)
                      + (SELECT count(*) FROM sip_accounts)
@@ -292,6 +294,270 @@ class DatabaseInfrastructureIntegrationTest {
         assertThat(unseededReferenceRowCount).isZero();
 
         assertThat(applicationContext.containsBean("entityManagerFactory")).isFalse();
+    }
+
+    @Test
+    void recordsV12ExactlyOnceAsASuccessfulFlywayMigration() {
+        List<MigrationHistory> history = jdbcTemplate.query(
+                """
+                SELECT version, description, script, success
+                  FROM flyway_schema_history
+                 WHERE version = '12'
+                """,
+                (resultSet, rowNumber) -> new MigrationHistory(
+                        resultSet.getString("version"),
+                        resultSet.getString("description"),
+                        resultSet.getString("script"),
+                        resultSet.getBoolean("success")));
+
+        assertThat(history).containsExactly(new MigrationHistory(
+                "12",
+                "seed crm and telephony reference data",
+                "V12__seed_crm_and_telephony_reference_data.sql",
+                true));
+    }
+
+    @Test
+    void seedsExactlyTheApprovedGlobalCrmAndTelephonyReferenceData() {
+        List<TaskStatusSeed> taskStatuses = jdbcTemplate.query(
+                """
+                SELECT id, code, name, is_closed, is_active
+                  FROM lead_task_statuses
+                 ORDER BY code
+                """,
+                (resultSet, rowNumber) -> new TaskStatusSeed(
+                        resultSet.getObject("id", UUID.class),
+                        resultSet.getString("code"),
+                        resultSet.getString("name"),
+                        resultSet.getBoolean("is_closed"),
+                        resultSet.getBoolean("is_active")));
+        assertThat(taskStatuses).containsExactly(
+                new TaskStatusSeed(
+                        UUID.fromString("e8d7cdc6-6e26-4d7b-b995-f80a46d148eb"),
+                        "CANCELLED", "Cancelled", true, true),
+                new TaskStatusSeed(
+                        UUID.fromString("396c77c7-c5d3-4e56-9f9a-b64019872b91"),
+                        "COMPLETED", "Completed", true, true),
+                new TaskStatusSeed(
+                        UUID.fromString("a711f203-49d7-43fe-ae64-6b3b2b662702"),
+                        "IN_PROGRESS", "In Progress", false, true),
+                new TaskStatusSeed(
+                        UUID.fromString("e17553cb-84e0-4f6b-9d89-daf1171800c6"),
+                        "OPEN", "Open", false, true));
+
+        List<ActiveReferenceSeed> activityTypes = jdbcTemplate.query(
+                """
+                SELECT id, code, name, is_active
+                  FROM lead_activity_types
+                 ORDER BY code
+                """,
+                (resultSet, rowNumber) -> new ActiveReferenceSeed(
+                        resultSet.getObject("id", UUID.class),
+                        resultSet.getString("code"),
+                        resultSet.getString("name"),
+                        resultSet.getBoolean("is_active")));
+        assertThat(activityTypes).containsExactly(
+                new ActiveReferenceSeed(
+                        UUID.fromString("80455b96-6b6f-4ae8-a6d8-414c5773cf55"),
+                        "ASSIGNMENT", "Assignment", true),
+                new ActiveReferenceSeed(
+                        UUID.fromString("72af8200-7d11-448b-a40c-fd22f64dc69c"),
+                        "CALL", "Call", true),
+                new ActiveReferenceSeed(
+                        UUID.fromString("de43e843-46cf-43d8-9e1e-0930bd3f2b79"),
+                        "NOTE", "Note", true),
+                new ActiveReferenceSeed(
+                        UUID.fromString("7a1c856c-c25a-461d-8b21-aae646911d51"),
+                        "STATUS_CHANGE", "Status Change", true),
+                new ActiveReferenceSeed(
+                        UUID.fromString("5a8ad0a2-8683-489f-b71f-788887c65744"),
+                        "SYSTEM", "System", true),
+                new ActiveReferenceSeed(
+                        UUID.fromString("9928bbba-0aba-4205-b9de-6fef84ff5865"),
+                        "TOUR", "Tour", true));
+
+        assertThat(queryReferenceSeeds("call_directions")).containsExactly(
+                referenceSeed("12cdc1a3-4e6a-4f6d-a825-ff8bc5fa9391", "INBOUND", "Inbound"),
+                referenceSeed("440c2104-1afc-4d3d-bf60-f25f3609e8ba", "OUTBOUND", "Outbound"));
+
+        List<FlaggedReferenceSeed> dispositions = queryFlaggedReferenceSeeds(
+                "call_dispositions", "is_missed");
+        assertThat(dispositions).containsExactly(
+                flaggedReferenceSeed(
+                        "6553de3a-4c44-485f-93b3-fb767866cb4b", "ANSWERED", "Answered", false),
+                flaggedReferenceSeed(
+                        "7160c287-62ae-4522-823f-74c37e3fb454", "BUSY", "Busy", false),
+                flaggedReferenceSeed(
+                        "c196bc93-f295-4edf-80e8-5a6a08e34f2e", "FAILED", "Failed", false),
+                flaggedReferenceSeed(
+                        "5f73f656-69fe-4076-a922-e66f0a09be4a", "MISSED", "Missed", true),
+                flaggedReferenceSeed(
+                        "e55118ed-1e56-440e-9dfb-415c96ae2533", "NO_ANSWER", "No Answer", false),
+                flaggedReferenceSeed(
+                        "472be4fc-cf50-4dc2-98ea-e1d51e6d141b", "REJECTED", "Rejected", false));
+
+        assertThat(queryReferenceSeeds("call_event_types")).containsExactly(
+                referenceSeed("ac5d2745-01b3-45e8-8e5b-bd55fea40889", "ANSWERED", "Answered"),
+                referenceSeed("23d85d99-98db-4ff4-8fee-96573bb36579", "ENDED", "Ended"),
+                referenceSeed(
+                        "0123d4ef-f3a3-4efc-8d76-cfea8c345830",
+                        "RECORDING_AVAILABLE", "Recording Available"),
+                referenceSeed("eabb3ab9-78fb-4b04-9222-9443c8883f12", "RINGING", "Ringing"),
+                referenceSeed("9fbd9a57-37ff-40bb-aaab-fa184c5260bc", "STARTED", "Started"));
+
+        List<FlaggedReferenceSeed> webhookStatuses = queryFlaggedReferenceSeeds(
+                "webhook_statuses", "is_final");
+        assertThat(webhookStatuses).containsExactly(
+                flaggedReferenceSeed(
+                        "cc8204f8-f7a9-4db8-8cb4-87e5d53aacd8", "FAILED", "Failed", true),
+                flaggedReferenceSeed(
+                        "e6c3c3ae-eb91-44c2-ae6b-af1a9f67bf85", "IGNORED", "Ignored", true),
+                flaggedReferenceSeed(
+                        "6ec1db81-3e04-481c-b4e1-aaffeacf58d0", "PROCESSED", "Processed", true),
+                flaggedReferenceSeed(
+                        "cbb743e8-4f1a-4776-96fe-2523ef0c4638", "PROCESSING", "Processing", false),
+                flaggedReferenceSeed(
+                        "182f569e-d993-4ed8-b26c-1c4d3c333bb8", "RECEIVED", "Received", false));
+
+        Integer totalSeedCount = jdbcTemplate.queryForObject(
+                """
+                SELECT (SELECT count(*) FROM lead_task_statuses)
+                     + (SELECT count(*) FROM lead_activity_types)
+                     + (SELECT count(*) FROM call_directions)
+                     + (SELECT count(*) FROM call_dispositions)
+                     + (SELECT count(*) FROM call_event_types)
+                     + (SELECT count(*) FROM webhook_statuses)
+                """,
+                Integer.class);
+        assertThat(totalSeedCount).isEqualTo(28);
+    }
+
+    @Test
+    void rejectsConflictsWithEveryApprovedReferenceCodeAndAllowsNewCodes() {
+        for (ApprovedReference approvedReference : approvedReferences()) {
+            String additionalCode = "V12_"
+                    + UUID.randomUUID().toString().replace("-", "").substring(0, 20);
+            try {
+                assertSqlState(
+                        "23505",
+                        () -> insertGlobalReference(
+                                approvedReference.tableName(),
+                                UUID.randomUUID(),
+                                approvedReference.code()));
+                insertGlobalReference(
+                        approvedReference.tableName(), UUID.randomUUID(), additionalCode);
+
+                Integer additionalRowCount = jdbcTemplate.queryForObject(
+                        "SELECT count(*) FROM "
+                                + validatedGlobalReferenceTable(approvedReference.tableName())
+                                + " WHERE code = ?",
+                        Integer.class,
+                        additionalCode);
+                assertThat(additionalRowCount).isEqualTo(1);
+            } finally {
+                jdbcTemplate.update(
+                        "DELETE FROM "
+                                + validatedGlobalReferenceTable(approvedReference.tableName())
+                                + " WHERE code = ?",
+                        additionalCode);
+            }
+        }
+    }
+
+    @Test
+    void v12UsesOnlyStrictExplicitInsertStatementsAndFixedUuids() throws Exception {
+        String migration = new ClassPathResource(
+                        "db/migration/V12__seed_crm_and_telephony_reference_data.sql")
+                .getContentAsString(StandardCharsets.UTF_8);
+        List<String> statements = Arrays.stream(migration.split(";"))
+                .map(String::trim)
+                .filter(statement -> !statement.isEmpty())
+                .toList();
+
+        assertThat(statements).hasSize(6).allMatch(statement ->
+                statement.regionMatches(true, 0, "INSERT INTO", 0, "INSERT INTO".length()));
+        assertThat(migration).contains(
+                "INSERT INTO lead_task_statuses (id, code, name, is_closed, is_active)",
+                "INSERT INTO lead_activity_types (id, code, name, is_active)",
+                "INSERT INTO call_directions (id, code, name)",
+                "INSERT INTO call_dispositions (id, code, name, is_missed)",
+                "INSERT INTO call_event_types (id, code, name)",
+                "INSERT INTO webhook_statuses (id, code, name, is_final)");
+        List<String> targetTables = Pattern.compile("(?i)INSERT\\s+INTO\\s+([a-z_]+)")
+                .matcher(migration)
+                .results()
+                .map(result -> result.group(1).toLowerCase())
+                .toList();
+        assertThat(targetTables).containsExactly(
+                "lead_task_statuses",
+                "lead_activity_types",
+                "call_directions",
+                "call_dispositions",
+                "call_event_types",
+                "webhook_statuses");
+        assertThat(migration.toUpperCase()).doesNotContain(
+                "ON CONFLICT",
+                "WHERE NOT EXISTS",
+                "CREATE ",
+                "ALTER ",
+                "DROP ",
+                "TRUNCATE ",
+                "UPDATE ",
+                "DELETE ",
+                "GEN_RANDOM_UUID",
+                "UUID_GENERATE");
+        assertThat(migration.toLowerCase()).doesNotContain(
+                "organization_id",
+                "branch_id",
+                "credential",
+                "endpoint",
+                "phone_number",
+                "username",
+                "token",
+                "secret",
+                "signature",
+                "recording_url",
+                "http://",
+                "https://");
+
+        Matcher uuidMatcher = Pattern.compile(
+                        "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}")
+                .matcher(migration);
+        List<String> uuids = uuidMatcher.results().map(result -> result.group()).toList();
+        assertThat(uuids).hasSize(28).doesNotHaveDuplicates();
+    }
+
+    @Test
+    void v12FailsStrictlyWhenAnApprovedCodeAlreadyHasAnotherIdentity() {
+        String schemaName = "v12_conflict_" + UUID.randomUUID().toString().replace("-", "");
+        Flyway throughV11 = flywayForSchema(schemaName, MigrationVersion.fromVersion("11"));
+
+        try {
+            throughV11.migrate();
+            UUID conflictingId = UUID.randomUUID();
+            jdbcTemplate.update(
+                    "INSERT INTO " + schemaName
+                            + ".lead_task_statuses (id, code, name)"
+                            + " VALUES (?, 'OPEN', 'Conflicting pre-V12 identity')",
+                    conflictingId);
+
+            Flyway throughV12 = flywayForSchema(schemaName, MigrationVersion.fromVersion("12"));
+            assertThatThrownBy(throughV12::migrate).isInstanceOf(FlywayException.class);
+
+            Map<String, Object> preservedConflict = jdbcTemplate.queryForMap(
+                    "SELECT id, name FROM " + schemaName
+                            + ".lead_task_statuses WHERE code = 'OPEN'");
+            assertThat(preservedConflict.get("id")).isEqualTo(conflictingId);
+            assertThat(preservedConflict.get("name")).isEqualTo("Conflicting pre-V12 identity");
+
+            Integer appliedV12Count = jdbcTemplate.queryForObject(
+                    "SELECT count(*) FROM " + schemaName
+                            + ".flyway_schema_history WHERE version = '12' AND success",
+                    Integer.class);
+            assertThat(appliedV12Count).isZero();
+        } finally {
+            jdbcTemplate.execute("DROP SCHEMA IF EXISTS " + schemaName + " CASCADE");
+        }
     }
 
     @Test
@@ -2959,6 +3225,113 @@ class DatabaseInfrastructureIntegrationTest {
         assertThat(rowCount).isEqualTo(1);
     }
 
+    private Flyway flywayForSchema(String schemaName, MigrationVersion target) {
+        return Flyway.configure()
+                .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+                .locations("classpath:db/migration")
+                .defaultSchema(schemaName)
+                .schemas(schemaName)
+                .target(target)
+                .load();
+    }
+
+    private List<ReferenceSeed> queryReferenceSeeds(String tableName) {
+        return jdbcTemplate.query(
+                "SELECT id, code, name FROM "
+                        + validatedTelephonyReferenceTable(tableName)
+                        + " ORDER BY code",
+                (resultSet, rowNumber) -> new ReferenceSeed(
+                        resultSet.getObject("id", UUID.class),
+                        resultSet.getString("code"),
+                        resultSet.getString("name")));
+    }
+
+    private List<FlaggedReferenceSeed> queryFlaggedReferenceSeeds(
+            String tableName, String flagColumn) {
+        String validatedFlagColumn = switch (tableName) {
+            case "call_dispositions" -> {
+                if (!"is_missed".equals(flagColumn)) {
+                    throw new IllegalArgumentException("Unexpected call disposition flag");
+                }
+                yield flagColumn;
+            }
+            case "webhook_statuses" -> {
+                if (!"is_final".equals(flagColumn)) {
+                    throw new IllegalArgumentException("Unexpected webhook status flag");
+                }
+                yield flagColumn;
+            }
+            default -> throw new IllegalArgumentException(
+                    "Unexpected flagged reference table: " + tableName);
+        };
+        return jdbcTemplate.query(
+                "SELECT id, code, name, " + validatedFlagColumn + " AS flag FROM "
+                        + validatedTelephonyReferenceTable(tableName)
+                        + " ORDER BY code",
+                (resultSet, rowNumber) -> new FlaggedReferenceSeed(
+                        resultSet.getObject("id", UUID.class),
+                        resultSet.getString("code"),
+                        resultSet.getString("name"),
+                        resultSet.getBoolean("flag")));
+    }
+
+    private ReferenceSeed referenceSeed(String id, String code, String name) {
+        return new ReferenceSeed(UUID.fromString(id), code, name);
+    }
+
+    private FlaggedReferenceSeed flaggedReferenceSeed(
+            String id, String code, String name, boolean flag) {
+        return new FlaggedReferenceSeed(UUID.fromString(id), code, name, flag);
+    }
+
+    private List<ApprovedReference> approvedReferences() {
+        return List.of(
+                new ApprovedReference("lead_task_statuses", "OPEN"),
+                new ApprovedReference("lead_task_statuses", "IN_PROGRESS"),
+                new ApprovedReference("lead_task_statuses", "COMPLETED"),
+                new ApprovedReference("lead_task_statuses", "CANCELLED"),
+                new ApprovedReference("lead_activity_types", "CALL"),
+                new ApprovedReference("lead_activity_types", "NOTE"),
+                new ApprovedReference("lead_activity_types", "STATUS_CHANGE"),
+                new ApprovedReference("lead_activity_types", "ASSIGNMENT"),
+                new ApprovedReference("lead_activity_types", "TOUR"),
+                new ApprovedReference("lead_activity_types", "SYSTEM"),
+                new ApprovedReference("call_directions", "INBOUND"),
+                new ApprovedReference("call_directions", "OUTBOUND"),
+                new ApprovedReference("call_dispositions", "ANSWERED"),
+                new ApprovedReference("call_dispositions", "MISSED"),
+                new ApprovedReference("call_dispositions", "BUSY"),
+                new ApprovedReference("call_dispositions", "REJECTED"),
+                new ApprovedReference("call_dispositions", "FAILED"),
+                new ApprovedReference("call_dispositions", "NO_ANSWER"),
+                new ApprovedReference("call_event_types", "STARTED"),
+                new ApprovedReference("call_event_types", "RINGING"),
+                new ApprovedReference("call_event_types", "ANSWERED"),
+                new ApprovedReference("call_event_types", "ENDED"),
+                new ApprovedReference("call_event_types", "RECORDING_AVAILABLE"),
+                new ApprovedReference("webhook_statuses", "RECEIVED"),
+                new ApprovedReference("webhook_statuses", "PROCESSING"),
+                new ApprovedReference("webhook_statuses", "PROCESSED"),
+                new ApprovedReference("webhook_statuses", "FAILED"),
+                new ApprovedReference("webhook_statuses", "IGNORED"));
+    }
+
+    private void insertGlobalReference(String tableName, UUID id, String code) {
+        jdbcTemplate.update(
+                "INSERT INTO " + validatedGlobalReferenceTable(tableName)
+                        + " (id, code, name) VALUES (?, ?, 'Integration test reference')",
+                id,
+                code);
+    }
+
+    private String validatedGlobalReferenceTable(String tableName) {
+        if (globalCrmReferenceTables().contains(tableName)
+                || telephonyReferenceTables().contains(tableName)) {
+            return tableName;
+        }
+        throw new IllegalArgumentException("Unexpected global reference table: " + tableName);
+    }
+
     private List<String> organizationScopedCrmReferenceTables() {
         return List.of("lead_sources", "lead_statuses", "lost_reasons", "tour_outcomes");
     }
@@ -4959,6 +5332,20 @@ class DatabaseInfrastructureIntegrationTest {
     }
 
     private record UserStatusSeed(UUID id, String code) {}
+
+    private record MigrationHistory(
+            String version, String description, String script, boolean success) {}
+
+    private record TaskStatusSeed(
+            UUID id, String code, String name, boolean closed, boolean active) {}
+
+    private record ActiveReferenceSeed(UUID id, String code, String name, boolean active) {}
+
+    private record ReferenceSeed(UUID id, String code, String name) {}
+
+    private record FlaggedReferenceSeed(UUID id, String code, String name, boolean flag) {}
+
+    private record ApprovedReference(String tableName, String code) {}
 
     private record ColumnMetadata(
             String tableName,
