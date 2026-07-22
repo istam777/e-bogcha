@@ -108,17 +108,26 @@ DB-001A requires minimum system-owned core seed identities. The approved
 complete 16-row tuple matrix across five tables. Status: APPROVED. The exact
 tuple matrix remains fixed for V13.
 
-### V13 delivery status
+### Database foundation delivery status
 
-V13 is implemented and DB-001C-05D = APPROVED. Implementation commit
-`aaaee9c92600d3c36de37d825c778114e16d9e3c` was pushed to
-`origin/feature/database-foundation`; the remote branch and PR #2 head both
-match that commit. Full validation passed 75/75 tests with 0 failures, 0 errors,
-and 0 skipped.
+Status: **COMPLETE**
 
-GitHub checks are not configured. Review thread `PRRT_kwDOTcawyc6S0eZR`
-remains unresolved, the PR description update is pending, and merge readiness
-has not yet been declared. Final review and the merge decision remain pending
-dedicated workflows.
+- Merged PR: #2
+- Merge method: merge commit
+- Merge commit: `90dbe5f3f4e8700d20bbd8f7454c058a19d758dc`
+- Merged at: `2026-07-22T10:33:29Z`
+- Merged by: `istam777`
+- Feature head: `92b3a9abd4eb93762c8efdae473c4529e748d5e7`
+- Migrations: V1-V13
+- Review threads: 1 resolved, 0 unresolved
+- Post-merge validation: 75/75 passed on PostgreSQL 17.10
+- Local and remote `main`: synchronized
+- Final documentation alignment: documentation-only change prepared on `docs/database-foundation-completion`
+- Documentation delivery lifecycle: tracked in Git and GitHub rather than maintained as mutable current-state text
+
+See [CORE_REFERENCE_DATA_PROPOSAL.md](CORE_REFERENCE_DATA_PROPOSAL.md) for the
+detailed V13 tuple contract, review-remediation evidence, merge record, and
+post-merge validation evidence. COMPLETE applies only to the database-foundation
+delivery; it does not declare the complete E-Bog'cha product finished.
 
 Detailed table definitions and ER diagrams will be added incrementally with each module before implementation.

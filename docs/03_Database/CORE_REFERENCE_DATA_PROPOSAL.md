@@ -23,7 +23,7 @@ The authoritative DBML and V4 schema define the columns and globally unique code
 
 The original PR #2 finding identified that V4 created these tables but V1-V12 left them empty and the integration test required them to remain empty. That behavior conflicted with DB-001A's minimum system-owned seed policy.
 
-V13 now appears to address the technical concern by inserting the approved fixed identities. GitHub review thread `PRRT_kwDOTcawyc6S0eZR` remains current and formally unresolved; no reply or resolution has occurred.
+V13 addressed the technical concern by inserting the approved fixed identities. Evidence reply `3629310152` was posted to GitHub review thread `PRRT_kwDOTcawyc6S0eZR`. The thread contains the original concern and that one evidence reply; after independent verification it was resolved, remains current and not outdated, and received no later objection. No unresolved review thread remains. Thread resolution records closure of the technical concern but does not establish formal PR approval.
 
 ## 4. Included tables
 
@@ -44,6 +44,7 @@ Total: 5 tables and 16 rows.
 - Organization-owned CRM references and runtime PBX data remain unseeded.
 - Admissions, Finance, Billing, ERP, and other deferred-module codes are excluded, including codes for tables not implemented in V1-V12.
 - The proposal contains no timestamp, environment-specific value, organization UUID, or branch UUID.
+- No sample business data is included.
 
 ## 6. Complete proposed tuple matrix
 
@@ -160,20 +161,30 @@ The implemented `backend/src/test/java/uz/oxukids/ebogcha/DatabaseInfrastructure
 
 The obsolete five-table zero-row expectation was removed only for the V13 target tables. Zero-row assertions remain for `nationalities`, organization-owned references, runtime PBX data, and other intentionally empty tables.
 
-## 12. Delivery progress and remaining gates
+## 12. Database-foundation delivery completion
 
-The tuple approval, approval-document commit, V13 implementation, integration-test update, independent read-only implementation review, implementation commit, push, and remote verification are complete.
+The tuple approval, approval-document commit, V13 implementation, integration-test update, independent read-only implementation review, implementation commit, push, remote verification, review remediation, and merge into `main` are complete.
 
-The remaining gates are:
+PR #2's description was updated to record migrations V1-V13 and the 75/75 validation result, then corrected after thread resolution. Evidence reply `3629310152` was independently verified before review thread `PRRT_kwDOTcawyc6S0eZR` was resolved. The thread is not outdated, contains exactly the original concern and one evidence reply, has no later objection, and is the only review thread; therefore zero unresolved review threads remain. GitHub checks were not configured, and no formal approval or change-request review decision existed or was required by repository policy.
 
-1. review this documentation-only change;
-2. commit and push this documentation update;
-3. update PR #2's description through a dedicated external-action task;
-4. reply to the review concern with the V13 commit and validation evidence;
-5. resolve the review thread only after verification;
-6. perform final remote and PR verification;
-7. determine merge readiness; and
-8. merge only through a separately authorized task.
+PR #2 was merged successfully using a merge commit:
+
+- merge commit: `90dbe5f3f4e8700d20bbd8f7454c058a19d758dc`;
+- merged at: `2026-07-22T10:33:29Z`;
+- merged by: `istam777`;
+- feature head: `92b3a9abd4eb93762c8efdae473c4529e748d5e7`;
+- changed files: 40; and
+- feature history: all 18 commits are preserved in `main`.
+
+The remote `feature/database-foundation` branch remains available. Local `main` was fast-forwarded to `origin/main`; both now point to `90dbe5f3f4e8700d20bbd8f7454c058a19d758dc` with 0 behind and 0 ahead. The merge-commit tree is identical to the feature-head tree.
+
+Post-merge validation on synchronized `main` recorded:
+
+- BUILD SUCCESSFUL;
+- 75 tests, 75 passed, 0 failures, 0 errors, and 0 skipped;
+- PostgreSQL 17.10 through Testcontainers and Flyway;
+- exactly migrations V1-V13, with no V14 or unexpected migration; and
+- a clean Git repository after validation.
 
 ## 13. Approval record
 
@@ -197,15 +208,21 @@ Delivery and validation record:
 - Strict duplicate-code behavior is covered through SQLSTATE `23505`, and the existing V3 and V12 seed coverage remains intact.
 - Approval commit: `b0ba7175bc81eaea7dff2b81ef1db8f9e81ac694` (`docs: approve core reference seed data`).
 - V13 implementation commit: `aaaee9c92600d3c36de37d825c778114e16d9e3c` (`feat(db): seed core reference data`).
-- Both commits were pushed normally, without force, to `origin/feature/database-foundation`.
-- Branch: `feature/database-foundation`. Local and remote head: `aaaee9c92600d3c36de37d825c778114e16d9e3c`. Ahead/behind after push: 0 behind and 0 ahead.
-- PR #2 is open, is not a draft, contains the V13 implementation commit, and has head `aaaee9c92600d3c36de37d825c778114e16d9e3c`. GitHub reported it mergeable during DB-001C-05H.
-- GitHub checks: not configured. There is no formal approval or change-request review decision.
-- PR description update: pending.
-- Review thread `PRRT_kwDOTcawyc6S0eZR` remains unresolved and not outdated. V13 appears to address its technical concern, but no reply or formal resolution has occurred.
+- The approval and implementation commits were pushed normally, without force, to `origin/feature/database-foundation` and are preserved in the merged history.
+- Branch: `feature/database-foundation`. Final local and remote feature head: `92b3a9abd4eb93762c8efdae473c4529e748d5e7`. The remote feature branch remains available.
+- PR #2 was merged by `istam777` at `2026-07-22T10:33:29Z` using merge commit `90dbe5f3f4e8700d20bbd8f7454c058a19d758dc`; all 18 feature commits and 40 changed files were preserved through the merge-commit history.
+- GitHub checks were not configured. There was no formal approval or change-request review decision, and repository policy required neither formal approval nor configured checks.
+- PR #2's description was updated and its review status corrected before merge.
+- Evidence reply `3629310152` was posted to review thread `PRRT_kwDOTcawyc6S0eZR`. The thread is resolved, not outdated, contains exactly two comments, received no later objection, and leaves zero unresolved review threads.
+- Local and remote `main` are synchronized at `90dbe5f3f4e8700d20bbd8f7454c058a19d758dc`; the merge tree matches the feature tree exactly.
+- Post-merge validation on `main` completed successfully: 75 tests passed with 0 failures, 0 errors, and 0 skipped on PostgreSQL 17.10 through Testcontainers and Flyway.
 
 ## 14. Current status
 
-Status: APPROVED
+**DATABASE FOUNDATION DELIVERY STATUS: COMPLETE**
 
-The exact 16-row matrix remains approved and is implemented, independently reviewed, committed, pushed, and remotely verified as recorded above. PR #2's description update, review-thread response and formal resolution, final re-review, and merge decision remain pending. PR #2 is not yet declared ready to merge, and merge requires a separately authorized task.
+COMPLETE applies only to the delivered database foundation: database architecture decisions; the approved DBML; backend database infrastructure; Flyway migrations V1-V13; foundation, core, identity, staff, files, settings, CRM, workflow, and telephony schema; approved V3, V12, and V13 seed data; integration validation; PR review remediation; merge into `main`; and post-merge validation.
+
+COMPLETE does not mean that the frontend, backend business services, CRM application logic, authentication and authorization, deployment, or the complete E-Bog'cha product is finished.
+
+The final database completion alignment was prepared as a dedicated documentation-only change on branch `docs/database-foundation-completion`. Its documentation delivery process is operationally separate from the technical database-foundation completion decision. Database-foundation completion is established by PR #2's merge into `main` and successful post-merge validation, not by the lifecycle state of the documentation branch. Commit, push, pull-request, and merge lifecycle details for documentation changes are tracked through Git history and GitHub rather than maintained as mutable present-state claims in this document.
