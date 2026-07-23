@@ -95,6 +95,19 @@ class CrmLeadServiceTest {
         Lead contacted = service.changeLeadStatus(new ChangeLeadStatusCommand(LEAD_ID, LeadStatus.CONTACTED));
 
         assertThat(contacted.status()).isEqualTo(LeadStatus.CONTACTED);
+        assertThat(repository.statusChangeSaveCount).isEqualTo(1);
+    }
+
+    @Test
+    void sameStatusIsIdempotentWithoutPersistingStatusHistory() {
+        service.createLead(new CreateLeadCommand(
+                LEAD_ID, ORGANIZATION_ID, LeadSource.SOCIAL_MEDIA, exampleNationalPhone("UZ")
+        ));
+
+        Lead unchanged = service.changeLeadStatus(new ChangeLeadStatusCommand(LEAD_ID, LeadStatus.NEW));
+
+        assertThat(unchanged.status()).isEqualTo(LeadStatus.NEW);
+        assertThat(repository.statusChangeSaveCount).isZero();
     }
 
     private static String exampleNationalPhone(String region) {
@@ -105,6 +118,7 @@ class CrmLeadServiceTest {
     private static final class InMemoryLeadRepository implements LeadRepository {
 
         private final Map<UUID, Lead> leads = new HashMap<>();
+        private int statusChangeSaveCount;
 
         @Override
         public synchronized Optional<Lead> findById(UUID leadId) {
@@ -118,6 +132,7 @@ class CrmLeadServiceTest {
 
         @Override
         public synchronized void saveStatusChange(Lead lead, LeadStatus previousStatus, Instant changedAt) {
+            statusChangeSaveCount++;
             leads.put(lead.id(), lead);
         }
 

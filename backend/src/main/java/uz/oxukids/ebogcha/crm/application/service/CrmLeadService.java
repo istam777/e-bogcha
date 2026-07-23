@@ -69,8 +69,9 @@ public final class CrmLeadService implements CreateLeadUseCase, AcceptLeadUseCas
         Lead lead = leadRepository.findById(command.leadId())
                 .orElseThrow(() -> new LeadNotFoundException(command.leadId()));
         var previousStatus = lead.status();
-        lead.changeStatus(command.targetStatus(), transitionPolicy);
-        leadRepository.saveStatusChange(lead, previousStatus, clock.now());
+        if (lead.changeStatus(command.targetStatus(), transitionPolicy)) {
+            leadRepository.saveStatusChange(lead, previousStatus, clock.now());
+        }
         return lead;
     }
 }

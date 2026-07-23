@@ -82,13 +82,17 @@ public final class Lead {
         }
     }
 
-    public void changeStatus(LeadStatus target, LeadStatusTransitionPolicy policy) {
+    public boolean changeStatus(LeadStatus target, LeadStatusTransitionPolicy policy) {
         Objects.requireNonNull(target, "target status must not be null");
         Objects.requireNonNull(policy, "policy must not be null");
         if (!policy.allows(status, target)) {
             throw new InvalidLeadStatusTransitionException(status, target);
         }
+        if (status == target) {
+            return false;
+        }
         status = target;
+        return true;
     }
 
     public UUID id() {
