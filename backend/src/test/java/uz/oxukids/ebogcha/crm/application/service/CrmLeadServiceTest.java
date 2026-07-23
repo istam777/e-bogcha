@@ -49,7 +49,7 @@ class CrmLeadServiceTest {
         duplicateCandidateIds = Set.of();
         service = new CrmLeadService(
                 repository,
-                (organizationId, phoneNumber) -> duplicateCandidateIds,
+                (organizationId, phoneNumber, excludedLeadId) -> duplicateCandidateIds,
                 () -> NOW,
                 new InitialContactDeadlinePolicy(),
                 LeadStatusTransitionPolicy.standard()

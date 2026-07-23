@@ -49,7 +49,9 @@ public final class CrmLeadService implements CreateLeadUseCase, AcceptLeadUseCas
         Objects.requireNonNull(command, "command must not be null");
         PhoneNumber normalizedPhone = PhoneNumber.of(command.displayPhone());
         Set<UUID> duplicateCandidateIds = Objects.requireNonNull(
-                duplicateLeadDiscoveryPort.findCandidateIds(command.organizationId(), normalizedPhone),
+                duplicateLeadDiscoveryPort.findCandidateIds(
+                        command.organizationId(), normalizedPhone, command.leadId()
+                ),
                 "duplicate candidate IDs must not be null"
         );
         Lead lead = Lead.create(
