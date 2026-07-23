@@ -130,7 +130,8 @@ class CrmLeadServiceTest {
         ));
 
         assertThat(contacted.status()).isEqualTo(LeadStatus.CONTACTED);
-        assertThat(repository.statusChangeSaveCount).isEqualTo(1);
+        assertThat(repository.statusChangeAttemptCount).isEqualTo(1);
+        assertThat(repository.statusHistorySaveCount).isEqualTo(1);
         assertThat(repository.previousStatus).isEqualTo(LeadStatus.NEW);
         assertThat(repository.statusChangedAt).isEqualTo(NOW);
         assertThat(repository.statusChangedBy).isEqualTo(OPERATOR_ONE);
@@ -138,7 +139,7 @@ class CrmLeadServiceTest {
     }
 
     @Test
-    void sameStatusIsIdempotentWithoutPersistingStatusHistory() {
+    void sameStatusDelegatesAuthorizationWithoutPersistingStatusHistory() {
         service.createLead(createCommand(LeadSource.SOCIAL_MEDIA, exampleNationalPhone("UZ")));
 
         Lead unchanged = service.changeLeadStatus(new ChangeLeadStatusCommand(
@@ -146,7 +147,8 @@ class CrmLeadServiceTest {
         ));
 
         assertThat(unchanged.status()).isEqualTo(LeadStatus.NEW);
-        assertThat(repository.statusChangeSaveCount).isZero();
+        assertThat(repository.statusChangeAttemptCount).isEqualTo(1);
+        assertThat(repository.statusHistorySaveCount).isZero();
     }
 
     @Test
@@ -175,7 +177,8 @@ class CrmLeadServiceTest {
     private static final class InMemoryLeadRepository implements LeadRepository {
 
         private final Map<UUID, Lead> leads = new HashMap<>();
-        private int statusChangeSaveCount;
+        private int statusChangeAttemptCount;
+        private int statusHistorySaveCount;
         private LeadStatus previousStatus;
         private Instant statusChangedAt;
         private UUID statusChangedBy;
@@ -197,10 +200,13 @@ class CrmLeadServiceTest {
                 Instant changedAt,
                 UUID changedByUserId
         ) {
-            statusChangeSaveCount++;
+            statusChangeAttemptCount++;
             this.previousStatus = previousStatus;
             this.statusChangedAt = changedAt;
             this.statusChangedBy = changedByUserId;
+            if (previousStatus != lead.status()) {
+                statusHistorySaveCount++;
+            }
             leads.put(lead.id(), lead);
         }
 

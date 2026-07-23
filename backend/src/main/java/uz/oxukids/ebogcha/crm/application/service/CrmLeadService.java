@@ -7,6 +7,7 @@ import uz.oxukids.ebogcha.crm.application.port.in.ChangeLeadStatusUseCase;
 import uz.oxukids.ebogcha.crm.application.port.in.CreateLeadCommand;
 import uz.oxukids.ebogcha.crm.application.port.in.CreateLeadResult;
 import uz.oxukids.ebogcha.crm.application.port.in.CreateLeadUseCase;
+import uz.oxukids.ebogcha.crm.application.port.in.GetLeadUseCase;
 import uz.oxukids.ebogcha.crm.application.port.out.DuplicateLeadDiscoveryPort;
 import uz.oxukids.ebogcha.crm.application.port.out.LeadRepository;
 import uz.oxukids.ebogcha.crm.domain.exception.LeadNotFoundException;
@@ -20,7 +21,8 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
-public final class CrmLeadService implements CreateLeadUseCase, AcceptLeadUseCase, ChangeLeadStatusUseCase {
+public final class CrmLeadService
+        implements CreateLeadUseCase, GetLeadUseCase, AcceptLeadUseCase, ChangeLeadStatusUseCase {
 
     private final LeadRepository leadRepository;
     private final DuplicateLeadDiscoveryPort duplicateLeadDiscoveryPort;
@@ -64,6 +66,13 @@ public final class CrmLeadService implements CreateLeadUseCase, AcceptLeadUseCas
     }
 
     @Override
+    public Lead getLead(UUID leadId) {
+        Objects.requireNonNull(leadId, "leadId must not be null");
+        return leadRepository.findById(leadId)
+                .orElseThrow(() -> new LeadNotFoundException(leadId));
+    }
+
+    @Override
     public Lead acceptLead(AcceptLeadCommand command) {
         Objects.requireNonNull(command, "command must not be null");
         return leadRepository.claimOwnership(command.leadId(), command.operatorId());
@@ -75,11 +84,10 @@ public final class CrmLeadService implements CreateLeadUseCase, AcceptLeadUseCas
         Lead lead = leadRepository.findById(command.leadId())
                 .orElseThrow(() -> new LeadNotFoundException(command.leadId()));
         var previousStatus = lead.status();
-        if (lead.changeStatus(command.targetStatus(), command.lostReasonId(), transitionPolicy)) {
-            leadRepository.saveStatusChange(
-                    lead, previousStatus, clock.now(), command.changedByUserId()
-            );
-        }
+        lead.changeStatus(command.targetStatus(), command.lostReasonId(), transitionPolicy);
+        leadRepository.saveStatusChange(
+                lead, previousStatus, clock.now(), command.changedByUserId()
+        );
         return lead;
     }
 }
