@@ -218,6 +218,48 @@ class CrmLeadApiIntegrationTest {
         org.assertj.core.api.Assertions.assertThat(statusHistoryCount(leadId)).isEqualTo(1);
     }
 
+    @Test
+    void statusChangeRequiresBranchAccessBeforeWritingStatusOrHistory() throws Exception {
+        Fixture fixture = insertFixture();
+        UUID leadId = createLead(fixture, exampleNationalPhone());
+
+        mvc.perform(post("/api/v1/crm/leads/{leadId}/status-transitions", leadId)
+                        .header("X-Actor-User-Id", fixture.ungrantedUserId())
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"targetStatus\":\"CONTACTED\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("CRM_BRANCH_ACCESS_DENIED"));
+
+        org.assertj.core.api.Assertions.assertThat(currentStatus(leadId)).isEqualTo("NEW");
+        org.assertj.core.api.Assertions.assertThat(statusHistoryCount(leadId)).isZero();
+
+        grantBranchAccess(
+                fixture.ungrantedUserId(),
+                fixture.branchId(),
+                fixture.firstUserId()
+        );
+        changeStatus(leadId, fixture.ungrantedUserId(), "CONTACTED");
+
+        org.assertj.core.api.Assertions.assertThat(currentStatus(leadId)).isEqualTo("CONTACTED");
+        org.assertj.core.api.Assertions.assertThat(statusHistoryCount(leadId)).isEqualTo(1);
+    }
+
+    @Test
+    void unauthorizedSameStatusRequestIsForbiddenWithoutHistory() throws Exception {
+        Fixture fixture = insertFixture();
+        UUID leadId = createLead(fixture, exampleNationalPhone());
+
+        mvc.perform(post("/api/v1/crm/leads/{leadId}/status-transitions", leadId)
+                        .header("X-Actor-User-Id", fixture.ungrantedUserId())
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"targetStatus\":\"NEW\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("CRM_BRANCH_ACCESS_DENIED"));
+
+        org.assertj.core.api.Assertions.assertThat(currentStatus(leadId)).isEqualTo("NEW");
+        org.assertj.core.api.Assertions.assertThat(statusHistoryCount(leadId)).isZero();
+    }
+
     private Fixture insertFixture() {
         UUID organizationId = UUID.randomUUID();
         UUID branchId = UUID.randomUUID();

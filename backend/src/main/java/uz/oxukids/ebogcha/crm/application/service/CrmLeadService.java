@@ -84,11 +84,10 @@ public final class CrmLeadService
         Lead lead = leadRepository.findById(command.leadId())
                 .orElseThrow(() -> new LeadNotFoundException(command.leadId()));
         var previousStatus = lead.status();
-        if (lead.changeStatus(command.targetStatus(), command.lostReasonId(), transitionPolicy)) {
-            leadRepository.saveStatusChange(
-                    lead, previousStatus, clock.now(), command.changedByUserId()
-            );
-        }
+        lead.changeStatus(command.targetStatus(), command.lostReasonId(), transitionPolicy);
+        leadRepository.saveStatusChange(
+                lead, previousStatus, clock.now(), command.changedByUserId()
+        );
         return lead;
     }
 }

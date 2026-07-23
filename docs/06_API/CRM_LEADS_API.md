@@ -70,13 +70,16 @@ A successful request returns `200 OK` and the lead fields shown above, excluding
 
 The request requires `X-Actor-User-Id` and has no body. A successful request
 returns `200 OK` with the updated lead. Existing organization, branch-access,
-idempotency, and first-operator-wins rules remain authoritative.
+idempotency, and first-operator-wins rules remain authoritative. The actor must
+have explicit access to the lead branch.
 
 ## Change lead status
 
 `POST /api/v1/crm/leads/{leadId}/status-transitions`
 
 The request requires `X-Actor-User-Id`.
+The actor must belong to the lead organization and have explicit access to the
+lead branch, including for same-status requests.
 
 ```json
 {

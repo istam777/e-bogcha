@@ -144,13 +144,15 @@ public class JdbcLeadRepository implements LeadRepository {
         if (!current.organizationId().equals(lead.organizationId())) {
             throw new InconsistentCrmDataException("Lead organization does not match persisted data");
         }
+        requireUserBranchAccess(
+                changedByUserId, current.organizationId(), current.branchId()
+        );
         if (!current.statusCode().equals(previousStatus.name())) {
             throw new InconsistentCrmDataException("Persisted lead status changed concurrently");
         }
         if (current.statusCode().equals(lead.status().name())) {
             return;
         }
-        requireUserOrganization(changedByUserId, current.organizationId());
         UUID targetStatusId = resolveStatusId(current.organizationId(), lead.status());
         UUID lostReasonId = lead.lostReasonId().orElse(null);
         if (lostReasonId != null) {
@@ -399,26 +401,6 @@ public class JdbcLeadRepository implements LeadRepository {
         }
     }
 
-    private void requireUserOrganization(UUID userId, UUID organizationId) {
-        Boolean matches = jdbc.queryForObject(
-                """
-                SELECT EXISTS (
-                    SELECT 1
-                      FROM users
-                     WHERE id = :userId
-                       AND organization_id = :organizationId
-                )
-                """,
-                new MapSqlParameterSource()
-                        .addValue("userId", userId)
-                        .addValue("organizationId", organizationId),
-                Boolean.class
-        );
-        if (!Boolean.TRUE.equals(matches)) {
-            throw new CrmPersistenceException("CRM actor does not belong to the lead organization");
-        }
-    }
-
     private void requireUserBranchAccess(
             UUID userId,
             UUID organizationId,
@@ -474,7 +456,7 @@ public class JdbcLeadRepository implements LeadRepository {
     private StatusState lockStatusState(UUID leadId) {
         List<LockedLeadStatus> rows = jdbc.query(
                 """
-                SELECT b.organization_id, l.status_id
+                SELECT b.organization_id, l.branch_id, l.status_id
                   FROM leads l
                   JOIN branches b ON b.id = l.branch_id
                  WHERE l.id = :leadId
@@ -483,6 +465,7 @@ public class JdbcLeadRepository implements LeadRepository {
                 new MapSqlParameterSource("leadId", leadId),
                 (resultSet, rowNumber) -> new LockedLeadStatus(
                         resultSet.getObject("organization_id", UUID.class),
+                        resultSet.getObject("branch_id", UUID.class),
                         resultSet.getObject("status_id", UUID.class)
                 )
         );
@@ -510,6 +493,7 @@ public class JdbcLeadRepository implements LeadRepository {
         }
         return new StatusState(
                 locked.organizationId(),
+                locked.branchId(),
                 locked.statusId(),
                 statuses.getFirst().code()
         );
@@ -612,11 +596,16 @@ public class JdbcLeadRepository implements LeadRepository {
             Instant firstContactDueAt
     ) {}
 
-    private record LockedLeadStatus(UUID organizationId, UUID statusId) {}
+    private record LockedLeadStatus(UUID organizationId, UUID branchId, UUID statusId) {}
 
     private record StatusReference(UUID organizationId, String code) {}
 
-    private record StatusState(UUID organizationId, UUID statusId, String statusCode) {}
+    private record StatusState(
+            UUID organizationId,
+            UUID branchId,
+            UUID statusId,
+            String statusCode
+    ) {}
 
     private record LockedLeadOwner(
             UUID organizationId,
