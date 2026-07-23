@@ -4,6 +4,7 @@ import {
   localDateToStartOfDayInstant,
   localDateToEndOfDayExclusiveInstant,
   localDateFromInstant,
+  isValidDateString,
 } from '../lib/dates';
 
 describe('formatInstant', () => {
@@ -39,6 +40,22 @@ describe('localDateToStartOfDayInstant', () => {
   it('returns undefined for empty string', () => {
     expect(localDateToStartOfDayInstant('')).toBeUndefined();
   });
+
+  it('returns undefined for invalid format', () => {
+    expect(localDateToStartOfDayInstant('not-a-date')).toBeUndefined();
+  });
+
+  it('returns undefined for invalid calendar date', () => {
+    expect(localDateToStartOfDayInstant('2026-02-30')).toBeUndefined();
+  });
+
+  it('returns undefined for Feb 29 in non-leap year', () => {
+    expect(localDateToStartOfDayInstant('2025-02-29')).toBeUndefined();
+  });
+
+  it('accepts Feb 29 in leap year', () => {
+    expect(localDateToStartOfDayInstant('2024-02-29')).toBeDefined();
+  });
 });
 
 describe('localDateToEndOfDayExclusiveInstant', () => {
@@ -55,6 +72,10 @@ describe('localDateToEndOfDayExclusiveInstant', () => {
   it('returns undefined for empty string', () => {
     expect(localDateToEndOfDayExclusiveInstant('')).toBeUndefined();
   });
+
+  it('returns undefined for invalid format', () => {
+    expect(localDateToEndOfDayExclusiveInstant('2026-13-01')).toBeUndefined();
+  });
 });
 
 describe('localDateFromInstant', () => {
@@ -69,5 +90,34 @@ describe('localDateFromInstant', () => {
 
   it('returns empty for invalid', () => {
     expect(localDateFromInstant('invalid')).toBe('');
+  });
+});
+
+describe('isValidDateString', () => {
+  it('accepts valid YYYY-MM-DD', () => {
+    expect(isValidDateString('2026-07-23')).toBe(true);
+  });
+
+  it('accepts leap year date', () => {
+    expect(isValidDateString('2024-02-29')).toBe(true);
+  });
+
+  it('rejects non-leap year Feb 29', () => {
+    expect(isValidDateString('2025-02-29')).toBe(false);
+  });
+
+  it('rejects invalid month', () => {
+    expect(isValidDateString('2026-13-01')).toBe(false);
+  });
+
+  it('rejects invalid day', () => {
+    expect(isValidDateString('2026-02-30')).toBe(false);
+  });
+
+  it('rejects wrong format', () => {
+    expect(isValidDateString('07/23/2026')).toBe(false);
+    expect(isValidDateString('2026-7-23')).toBe(false);
+    expect(isValidDateString('not-a-date')).toBe(false);
+    expect(isValidDateString('')).toBe(false);
   });
 });

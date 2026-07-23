@@ -1,35 +1,77 @@
-import { useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { Search, X } from 'lucide-react';
 
 interface SearchInputProps {
   value: string;
   onChange: (value: string) => void;
+  debounceMs?: number;
 }
 
-export function SearchInput({ value, onChange }: SearchInputProps) {
+export function SearchInput({ value, onChange, debounceMs = 350 }: SearchInputProps) {
+  const [draft, setDraft] = useState(value);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastCommittedRef = useRef(value);
+
+  useEffect(() => {
+    if (value !== lastCommittedRef.current) {
+      setDraft(value);
+      lastCommittedRef.current = value;
+    }
+  }, [value]);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
+
+  const commit = useCallback(
+    (next: string) => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      const trimmed = next.trim();
+      if (trimmed.length === 1) {
+        lastCommittedRef.current = '';
+        onChange('');
+        return;
+      }
+      if (trimmed.length >= 2 && trimmed.length <= 100) {
+        timerRef.current = setTimeout(() => {
+          lastCommittedRef.current = trimmed;
+          onChange(trimmed);
+        }, debounceMs);
+      } else if (trimmed.length === 0) {
+        lastCommittedRef.current = '';
+        onChange('');
+      }
+    },
+    [onChange, debounceMs],
+  );
+
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const newValue = e.target.value;
-      if (newValue.length < 2 && newValue.length > 0) {
-        return;
-      }
-      onChange(newValue);
+      setDraft(newValue);
+      commit(newValue);
     },
-    [onChange],
+    [commit],
   );
 
   const handleClear = useCallback(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    setDraft('');
+    lastCommittedRef.current = '';
     onChange('');
   }, [onChange]);
 
-  const showError = value.length === 1;
+  const trimmedDraft = draft.trim();
+  const showError = trimmedDraft.length === 1;
 
   return (
     <div className="search-input-wrapper">
       <Search size={18} className="search-input-icon" aria-hidden="true" />
       <input
         type="text"
-        value={value}
+        value={draft}
         onChange={handleChange}
         placeholder="Ota-ona ismi yoki telefon bo'yicha qidirish"
         className="search-input"
@@ -37,7 +79,7 @@ export function SearchInput({ value, onChange }: SearchInputProps) {
         aria-describedby={showError ? 'search-error' : undefined}
         aria-invalid={showError}
       />
-      {value && (
+      {draft && (
         <button
           type="button"
           onClick={handleClear}

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useEffect } from 'react';
+import { useCallback, useMemo } from 'react';
 import { Filter, X } from 'lucide-react';
 import { SearchInput } from './SearchInput';
 import { Select } from '@/shared/ui/Select';
@@ -25,30 +25,20 @@ export function FilterBar({ params, onChange, activeFilterCount }: FilterBarProp
     <K extends keyof LeadSearchParams>(key: K, value: LeadSearchParams[K]) => {
       const next = { ...params, [key]: value, page: 0 };
       if (key !== 'page') next.page = 0;
+      if (key === 'ownerState' && value === 'UNASSIGNED') {
+        next.ownerOperatorId = undefined;
+      }
       onChange(next);
     },
     [params, onChange],
   );
 
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   const handleSearchChange = useCallback(
     (q: string) => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-      if (q.length > 0 && q.length < 2) return;
-
-      timerRef.current = setTimeout(() => {
-        onChange({ ...params, q, page: 0 });
-      }, 350);
+      onChange({ ...params, q, page: 0 });
     },
     [params, onChange],
   );
-
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
-  }, []);
 
   const handleClearFilters = useCallback(() => {
     onChange({

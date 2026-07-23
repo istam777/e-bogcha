@@ -14,13 +14,22 @@ export function LoginPage() {
   const [rememberMe, setRememberMe] = useState(false);
   const [loginNotice, setLoginNotice] = useState(false);
 
+  const [usernameError, setUsernameError] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+
   const [devActorInput, setDevActorInput] = useState('');
   const [devActorError, setDevActorError] = useState('');
+
+  const currentYear = new Date().getFullYear();
 
   const handleLoginSubmit = useCallback(
     (e: React.FormEvent) => {
       e.preventDefault();
-      if (!username.trim() || !password) return;
+      const uErr = !username.trim() ? 'Login kiritilishi shart' : '';
+      const pErr = !password ? 'Parol kiritilishi shart' : '';
+      setUsernameError(uErr);
+      setPasswordError(pErr);
+      if (uErr || pErr) return;
       setLoginNotice(true);
     },
     [username, password],
@@ -63,7 +72,7 @@ export function LoginPage() {
           </p>
         </div>
         <div className="login-visual__footer">
-          <p>© 2025 Oxu Kids. Barcha huquqlar himoyalangan.</p>
+          <p>&copy; {currentYear} Oxu Kids. Barcha huquqlar himoyalangan.</p>
         </div>
       </div>
 
@@ -86,11 +95,21 @@ export function LoginPage() {
                   type="text"
                   placeholder="Loginni kiriting"
                   value={username}
-                  onChange={(e) => setUsername(e.target.value)}
+                  onChange={(e) => {
+                    setUsername(e.target.value);
+                    if (usernameError) setUsernameError('');
+                  }}
                   className="login-field__input"
                   autoComplete="username"
+                  aria-invalid={!!usernameError}
+                  aria-describedby={usernameError ? 'login-username-error' : undefined}
                 />
               </div>
+              {usernameError && (
+                <span id="login-username-error" className="login-field__error" role="alert">
+                  {usernameError}
+                </span>
+              )}
             </div>
 
             <div className="login-field">
@@ -104,9 +123,14 @@ export function LoginPage() {
                   type={showPassword ? 'text' : 'password'}
                   placeholder="Parolni kiriting"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    if (passwordError) setPasswordError('');
+                  }}
                   className="login-field__input"
                   autoComplete="current-password"
+                  aria-invalid={!!passwordError}
+                  aria-describedby={passwordError ? 'login-password-error' : undefined}
                 />
                 <button
                   type="button"
@@ -117,6 +141,11 @@ export function LoginPage() {
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
+              {passwordError && (
+                <span id="login-password-error" className="login-field__error" role="alert">
+                  {passwordError}
+                </span>
+              )}
             </div>
 
             <div className="login-options">
@@ -181,7 +210,7 @@ export function LoginPage() {
           )}
 
           <div className="login-card__footer">
-            <p>© Oxu Kids. Barcha huquqlar himoyalangan.</p>
+            <p>&copy; Oxu Kids. Barcha huquqlar himoyalangan.</p>
           </div>
         </div>
       </div>

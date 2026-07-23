@@ -22,6 +22,21 @@
   color: var(--color-text-muted);
 }
 
+.filter-validation-errors {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 12px;
+  background: var(--color-danger-light, #fef2f2);
+  border: 1px solid var(--color-danger, #dc2626);
+  border-radius: var(--radius-md);
+}
+
+.filter-validation-error {
+  font-size: 0.8125rem;
+  color: var(--color-danger, #dc2626);
+}
+
 .skeleton-table {
   overflow: hidden;
 }

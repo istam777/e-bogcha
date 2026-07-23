@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { server } from '@/tests/server';
@@ -256,5 +256,191 @@ describe('Unsupported controls absent', () => {
     });
     const text = document.body.textContent || '';
     expect(text).not.toContain('Export');
+  });
+});
+
+describe('Login required-field validation', () => {
+  it('shows errors when submitting empty fields', async () => {
+    localStorage.clear();
+    window.history.pushState({}, '', '/login');
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole('button', { name: /Tizimga kirish/ }));
+
+    expect(screen.getByText('Login kiritilishi shart')).toBeInTheDocument();
+    expect(screen.getByText('Parol kiritilishi shart')).toBeInTheDocument();
+  });
+
+  it('sets aria-invalid on empty fields', async () => {
+    localStorage.clear();
+    window.history.pushState({}, '', '/login');
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole('button', { name: /Tizimga kirish/ }));
+
+    expect(screen.getByLabelText('Login')).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByLabelText('Parol')).toHaveAttribute('aria-invalid', 'true');
+  });
+
+  it('clears errors when user types', async () => {
+    localStorage.clear();
+    window.history.pushState({}, '', '/login');
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole('button', { name: /Tizimga kirish/ }));
+    expect(screen.getByText('Login kiritilishi shart')).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText('Login'), 'admin');
+    expect(screen.queryByText('Login kiritilishi shart')).not.toBeInTheDocument();
+  });
+});
+
+describe('Search input realistic typing', () => {
+  it('A, Al and Ali are visibly typed', async () => {
+    // Ensure clean state
+    cleanup();
+    localStorage.setItem('ebogcha_actor_user_id', '44444444-4444-4444-8444-444444444444');
+    window.history.pushState({}, '', '/crm/leads');
+    const user = userEvent.setup();
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Test Ota').length).toBeGreaterThan(0);
+    });
+
+    const searchInput = screen.getByPlaceholderText(/Ota-ona ismi yoki telefon/);
+    await user.type(searchInput, 'Ali');
+
+    expect(searchInput).toHaveValue('Ali');
+  });
+
+  it('single character shows validation message', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Test Ota').length).toBeGreaterThan(0);
+    });
+
+    const searchInput = screen.getByPlaceholderText(/Ota-ona ismi yoki telefon/);
+    await user.type(searchInput, 'A');
+
+    expect(searchInput).toHaveValue('A');
+    expect(screen.getByText(/kamida 2 ta belgi/)).toBeInTheDocument();
+  });
+
+  it('clear button clears the search', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Test Ota').length).toBeGreaterThan(0);
+    });
+
+    const searchInput = screen.getByPlaceholderText(/Ota-ona ismi yoki telefon/);
+    await user.type(searchInput, 'Ali');
+    expect(searchInput).toHaveValue('Ali');
+
+    await user.click(screen.getByLabelText('Qidiruvni tozalash'));
+    expect(searchInput).toHaveValue('');
+  });
+});
+
+describe('Filter validation blocks requests', () => {
+  it('no request for malformed branchId', async () => {
+    localStorage.setItem('ebogcha_actor_user_id', '44444444-4444-4444-8444-444444444444');
+    let requestCount = 0;
+    server.use(
+      http.get('/api/v1/crm/leads', () => {
+        requestCount++;
+        return HttpResponse.json({
+          items: [],
+          page: 0,
+          size: 20,
+          totalElements: 0,
+          totalPages: 0,
+          hasPrevious: false,
+          hasNext: false,
+        });
+      }),
+    );
+
+    window.history.pushState({}, '', '/crm/leads?branchId=not-a-uuid');
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('CRM Leadlar').length).toBeGreaterThan(0);
+    });
+
+    await new Promise((r) => setTimeout(r, 500));
+    expect(requestCount).toBe(0);
+  });
+
+  it('no request for ownerOperatorId + UNASSIGNED', async () => {
+    localStorage.setItem('ebogcha_actor_user_id', '44444444-4444-4444-8444-444444444444');
+    let requestCount = 0;
+    server.use(
+      http.get('/api/v1/crm/leads', () => {
+        requestCount++;
+        return HttpResponse.json({
+          items: [],
+          page: 0,
+          size: 20,
+          totalElements: 0,
+          totalPages: 0,
+          hasPrevious: false,
+          hasNext: false,
+        });
+      }),
+    );
+
+    window.history.pushState(
+      {},
+      '',
+      '/crm/leads?ownerOperatorId=44444444-4444-4444-8444-444444444444&ownerState=UNASSIGNED',
+    );
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('CRM Leadlar').length).toBeGreaterThan(0);
+    });
+
+    await new Promise((r) => setTimeout(r, 500));
+    expect(requestCount).toBe(0);
+  });
+
+  it('shows validation error for invalid date', async () => {
+    localStorage.setItem('ebogcha_actor_user_id', '44444444-4444-4444-8444-444444444444');
+    window.history.pushState({}, '', '/crm/leads?createdFrom=not-a-date');
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('CRM Leadlar').length).toBeGreaterThan(0);
+    });
+
+    const text = document.body.textContent || '';
+    expect(text).toContain('noto\'g\'ri sana formati');
+  });
+});
+
+describe('Copyright year', () => {
+  it('displays current year', () => {
+    localStorage.clear();
+    window.history.pushState({}, '', '/login');
+    render(<App />);
+    const year = new Date().getFullYear().toString();
+    const text = document.body.textContent || '';
+    expect(text).toContain(year);
+  });
+
+  it('does not display hardcoded 2025', () => {
+    localStorage.clear();
+    window.history.pushState({}, '', '/login');
+    render(<App />);
+    const visualFooter = document.querySelector('.login-visual__footer');
+    expect(visualFooter?.textContent).not.toContain('2025');
   });
 });

@@ -28,13 +28,14 @@ export function isValidUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }
 
-export function resolveActorId(): string | null {
-  const stored = getStoredActorId();
-  if (stored && isValidUuid(stored)) return stored;
-
-  const env = import.meta.env.VITE_ACTOR_USER_ID;
-  if (env && isValidUuid(env)) return env;
-
+export function resolveActorId(
+  isDevelopment: boolean,
+  storedActor: string | null,
+  envActor: string,
+): string | null {
+  if (!isDevelopment) return null;
+  if (storedActor && isValidUuid(storedActor)) return storedActor;
+  if (envActor && isValidUuid(envActor)) return envActor;
   return null;
 }
 

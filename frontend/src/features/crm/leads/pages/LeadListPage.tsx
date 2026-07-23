@@ -19,6 +19,7 @@ import {
   hasActiveFilters,
   countActiveFilters,
 } from '../api/query-params';
+import { isQueryEnabled, validateFilters } from '../lib/filter-validation';
 import type { LeadSearchParams } from '@/shared/types/api';
 
 export function LeadListPage() {
@@ -29,16 +30,7 @@ export function LeadListPage() {
 
   const handleParamsChange = useCallback(
     (newParams: LeadSearchParams) => {
-      const apiParams: LeadSearchParams = { ...newParams };
-
-      if (newParams.createdFrom) {
-        apiParams.createdFrom = localDateToApiInstant(newParams.createdFrom, 'start');
-      }
-      if (newParams.createdTo) {
-        apiParams.createdTo = localDateToApiInstant(newParams.createdTo, 'end');
-      }
-
-      const sp = paramsToSearchParams(apiParams);
+      const sp = paramsToSearchParams(newParams);
       setSearchParams(sp, { replace: true });
     },
     [setSearchParams],
@@ -51,10 +43,13 @@ export function LeadListPage() {
     return p;
   }, [params]);
 
+  const filterErrors = useMemo(() => validateFilters(params), [params]);
+  const queryEnabled = useMemo(() => isQueryEnabled(!!actorId, params), [actorId, params]);
+
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['leads', apiParams, actorId],
     queryFn: ({ signal }) => fetchLeads(apiParams, actorId, signal),
-    enabled: !!actorId,
+    enabled: queryEnabled,
     staleTime: 30_000,
   });
 
@@ -89,6 +84,14 @@ export function LeadListPage() {
         onChange={handleParamsChange}
         activeFilterCount={activeFilterCount}
       />
+
+      {!filterErrors.valid && (
+        <div className="filter-validation-errors" role="alert">
+          {filterErrors.errors.map((err) => (
+            <span key={err} className="filter-validation-error">{err}</span>
+          ))}
+        </div>
+      )}
 
       {isLoading ? (
         <>
