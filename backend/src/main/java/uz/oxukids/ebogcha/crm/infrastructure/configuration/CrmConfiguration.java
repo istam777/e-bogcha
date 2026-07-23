@@ -3,8 +3,10 @@ package uz.oxukids.ebogcha.crm.infrastructure.configuration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import uz.oxukids.ebogcha.crm.application.port.out.DuplicateLeadDiscoveryPort;
+import uz.oxukids.ebogcha.crm.application.port.out.LeadQueryPort;
 import uz.oxukids.ebogcha.crm.application.port.out.LeadRepository;
 import uz.oxukids.ebogcha.crm.application.service.CrmLeadService;
+import uz.oxukids.ebogcha.crm.application.service.LeadSearchService;
 import uz.oxukids.ebogcha.crm.domain.policy.InitialContactDeadlinePolicy;
 import uz.oxukids.ebogcha.crm.domain.policy.LeadStatusTransitionPolicy;
 import uz.oxukids.ebogcha.crm.domain.time.CrmClock;
@@ -44,5 +46,10 @@ public class CrmConfiguration {
                 deadlinePolicy,
                 transitionPolicy
         );
+    }
+
+    @Bean
+    LeadSearchService leadSearchService(LeadQueryPort leadQueryPort, CrmClock crmClock) {
+        return new LeadSearchService(leadQueryPort, crmClock);
     }
 }

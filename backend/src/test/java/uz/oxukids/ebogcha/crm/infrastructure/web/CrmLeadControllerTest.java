@@ -10,6 +10,9 @@ import uz.oxukids.ebogcha.crm.application.port.in.AcceptLeadUseCase;
 import uz.oxukids.ebogcha.crm.application.port.in.ChangeLeadStatusUseCase;
 import uz.oxukids.ebogcha.crm.application.port.in.CreateLeadUseCase;
 import uz.oxukids.ebogcha.crm.application.port.in.GetLeadUseCase;
+import uz.oxukids.ebogcha.crm.application.port.in.LeadSearchResult;
+import uz.oxukids.ebogcha.crm.application.port.in.SearchLeadsUseCase;
+import uz.oxukids.ebogcha.crm.application.exception.LeadSearchBranchAccessDeniedException;
 import uz.oxukids.ebogcha.crm.domain.exception.InvalidLeadStatusTransitionException;
 import uz.oxukids.ebogcha.crm.domain.exception.LeadNotFoundException;
 import uz.oxukids.ebogcha.crm.domain.model.LeadStatus;
@@ -18,6 +21,7 @@ import uz.oxukids.ebogcha.crm.infrastructure.persistence.jdbc.CrmPersistenceExce
 import uz.oxukids.ebogcha.crm.infrastructure.persistence.jdbc.CrmReferenceDataNotFoundException;
 
 import java.util.UUID;
+import java.util.List;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
@@ -31,7 +35,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(CrmLeadController.class)
-@Import({CrmApiExceptionHandler.class, CrmLeadApiMapper.class})
+@Import({
+        CrmApiExceptionHandler.class,
+        CrmLeadApiMapper.class,
+        CrmLeadSearchApiMapper.class
+})
 class CrmLeadControllerTest {
 
     private static final UUID LEAD_ID = UUID.fromString("11111111-1111-4111-8111-111111111111");
@@ -53,6 +61,76 @@ class CrmLeadControllerTest {
 
     @MockitoBean
     private ChangeLeadStatusUseCase changeLeadStatusUseCase;
+
+    @MockitoBean
+    private SearchLeadsUseCase searchLeadsUseCase;
+
+    @Test
+    void leadSearchRequiresActorHeader() throws Exception {
+        mvc.perform(get("/api/v1/crm/leads"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("CRM_ACTOR_INVALID"));
+    }
+
+    @Test
+    void leadSearchUsesDefaultPagination() throws Exception {
+        when(searchLeadsUseCase.searchLeads(any())).thenReturn(
+                new LeadSearchResult(List.of(), 0, 20, 0, 0, false, false)
+        );
+
+        mvc.perform(get("/api/v1/crm/leads")
+                        .header("X-Actor-User-Id", ACTOR_ID))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.page").value(0))
+                .andExpect(jsonPath("$.size").value(20))
+                .andExpect(jsonPath("$.items", org.hamcrest.Matchers.hasSize(0)));
+    }
+
+    @Test
+    void invalidSearchCombinationReturnsStructuredBadRequest() throws Exception {
+        mvc.perform(get("/api/v1/crm/leads")
+                        .header("X-Actor-User-Id", ACTOR_ID)
+                        .queryParam("ownerOperatorId", ACTOR_ID.toString())
+                        .queryParam("ownerState", "UNASSIGNED"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("CRM_REQUEST_INVALID"));
+    }
+
+    @Test
+    void malformedSearchParametersReturnStructuredBadRequest() throws Exception {
+        mvc.perform(get("/api/v1/crm/leads")
+                        .header("X-Actor-User-Id", ACTOR_ID)
+                        .queryParam("branchId", "not-a-uuid")
+                        .queryParam("createdFrom", "not-an-instant"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("CRM_REQUEST_INVALID"));
+    }
+
+    @Test
+    void inaccessibleSearchBranchReturnsForbidden() throws Exception {
+        when(searchLeadsUseCase.searchLeads(any()))
+                .thenThrow(new LeadSearchBranchAccessDeniedException());
+
+        mvc.perform(get("/api/v1/crm/leads")
+                        .header("X-Actor-User-Id", ACTOR_ID)
+                        .queryParam("branchId", BRANCH_ID.toString()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("CRM_BRANCH_ACCESS_DENIED"));
+    }
+
+    @Test
+    void searchFailureReturnsSanitizedInternalError() throws Exception {
+        String sensitiveMessage = "SELECT failed for +998901234567 and Fictional Guardian";
+        when(searchLeadsUseCase.searchLeads(any()))
+                .thenThrow(new CrmPersistenceException(sensitiveMessage));
+
+        mvc.perform(get("/api/v1/crm/leads")
+                        .header("X-Actor-User-Id", ACTOR_ID))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.code").value("CRM_INTERNAL_ERROR"))
+                .andExpect(content().string(not(containsString(sensitiveMessage))))
+                .andExpect(content().string(not(containsString("+998901234567"))));
+    }
 
     @Test
     void blankGuardianReturnsStructuredBadRequest() throws Exception {

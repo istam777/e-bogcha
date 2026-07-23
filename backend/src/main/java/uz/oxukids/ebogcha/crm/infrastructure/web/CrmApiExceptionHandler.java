@@ -10,6 +10,8 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import uz.oxukids.ebogcha.crm.application.exception.InvalidLeadSearchQueryException;
+import uz.oxukids.ebogcha.crm.application.exception.LeadSearchBranchAccessDeniedException;
 import uz.oxukids.ebogcha.crm.domain.exception.DuplicateLeadException;
 import uz.oxukids.ebogcha.crm.domain.exception.InvalidLeadStatusTransitionException;
 import uz.oxukids.ebogcha.crm.domain.exception.InvalidPhoneNumberException;
@@ -32,6 +34,7 @@ public class CrmApiExceptionHandler {
             ConstraintViolationException.class,
             HttpMessageNotReadableException.class,
             MethodArgumentTypeMismatchException.class,
+            InvalidLeadSearchQueryException.class,
             InvalidPhoneNumberException.class
     })
     ResponseEntity<ProblemDetail> invalidRequest(Exception exception, HttpServletRequest request) {
@@ -69,9 +72,12 @@ public class CrmApiExceptionHandler {
         );
     }
 
-    @ExceptionHandler(UserBranchAccessDeniedException.class)
+    @ExceptionHandler({
+            UserBranchAccessDeniedException.class,
+            LeadSearchBranchAccessDeniedException.class
+    })
     ResponseEntity<ProblemDetail> branchAccessDenied(
-            UserBranchAccessDeniedException exception,
+            Exception exception,
             HttpServletRequest request
     ) {
         return problem(
