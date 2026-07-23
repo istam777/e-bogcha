@@ -15,6 +15,7 @@ com.fasterxml:classmate:1.7.3=compileClasspath,productionRuntimeClasspath,runtim
 com.github.docker-java:docker-java-api:3.4.2=testCompileClasspath,testRuntimeClasspath
 com.github.docker-java:docker-java-transport-zerodep:3.4.2=testCompileClasspath,testRuntimeClasspath
 com.github.docker-java:docker-java-transport:3.4.2=testCompileClasspath,testRuntimeClasspath
+com.googlecode.libphonenumber:libphonenumber:9.0.32=compileClasspath,productionRuntimeClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
 com.jayway.jsonpath:json-path:2.9.0=testCompileClasspath,testRuntimeClasspath
 com.vaadin.external.google:android-json:0.0.20131108.vaadin1=testCompileClasspath,testRuntimeClasspath
 com.zaxxer:HikariCP:6.3.3=compileClasspath,productionRuntimeClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
