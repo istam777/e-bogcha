@@ -1,7 +1,7 @@
 .page-content {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 20px;
 }
 
 .page-header {
@@ -11,13 +11,14 @@
 }
 
 .page-title {
+  font-family: var(--font-serif);
   font-size: 1.5rem;
   font-weight: 700;
-  color: var(--color-text);
+  color: var(--color-text-strong);
 }
 
 .page-subtitle {
-  font-size: 0.875rem;
+  font-size: 0.9375rem;
   color: var(--color-text-muted);
 }
 

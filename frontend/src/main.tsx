@@ -9,7 +9,7 @@ import './app/layouts/sidebar.css';
 import './app/layouts/header.css';
 import './app/layouts/layout.css';
 import './app/pages/not-found.css';
-import './app/providers/actor-setup.css';
+import './features/auth/pages/login-page.css';
 import './features/crm/leads/ui/search-input.css';
 import './features/crm/leads/ui/filter-bar.css';
 import './features/crm/leads/ui/lead-table.css';

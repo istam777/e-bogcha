@@ -1,9 +1,12 @@
-import { useState, useCallback } from 'react';
-import { Outlet } from 'react-router-dom';
+import { useState, useCallback, type ReactNode } from 'react';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 
-export function AppLayout() {
+interface AppLayoutProps {
+  children: ReactNode;
+}
+
+export function AppLayout({ children }: AppLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const handleMenuClick = useCallback(() => setSidebarOpen(true), []);
@@ -16,7 +19,7 @@ export function AppLayout() {
       <div className="app-layout__main">
         <Header onMenuClick={handleMenuClick} />
         <main className="app-layout__content">
-          <Outlet />
+          {children}
         </main>
       </div>
     </div>

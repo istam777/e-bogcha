@@ -6,7 +6,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 24px;
+  padding: 0 var(--content-padding);
   background: var(--color-surface);
   border-bottom: 1px solid var(--color-border);
 }
@@ -19,12 +19,6 @@
 
 .app-header__menu-btn {
   display: none;
-}
-
-.app-header__brand-mobile {
-  display: none;
-  font-weight: 700;
-  color: var(--color-primary);
 }
 
 .app-header__right {
@@ -48,8 +42,8 @@
   font-family: var(--font-mono);
   font-size: 0.75rem;
   color: var(--color-text);
-  background: var(--color-background);
-  padding: 2px 8px;
+  background: var(--color-background-muted);
+  padding: 4px 8px;
   border-radius: var(--radius-sm);
 }
 
@@ -60,10 +54,6 @@
 
   .app-header__menu-btn {
     display: flex;
-  }
-
-  .app-header__brand-mobile {
-    display: inline;
   }
 
   .app-header__actor-label {

@@ -8,7 +8,7 @@ import { Pagination } from '../ui/Pagination';
 import { EmptyState } from '../ui/EmptyState';
 import { TableRowSkeleton, CardSkeleton } from '@/shared/ui/Skeleton';
 import { ErrorDisplay } from '@/shared/ui/ErrorDisplay';
-import { useActor } from '@/app/providers/ActorProvider';
+import { useActor } from '@/app/providers/useActor';
 import { fetchLeads } from '../api/leads-api';
 import {
   searchParamsToParams,
@@ -65,8 +65,8 @@ export function LeadListPage() {
     return (
       <div className="page-content">
         <header className="page-header">
-          <h1 className="page-title">Leadlar</h1>
-          <p className="page-subtitle">CRM orqali kelgan murojaatlar va ularning holati</p>
+          <h1 className="page-title">CRM Leadlar</h1>
+          <p className="page-subtitle">Barcha leadlarni qidirish, filtrlash va kuzatish</p>
         </header>
         <ErrorDisplay
           error={error as Error}
@@ -80,8 +80,8 @@ export function LeadListPage() {
   return (
     <div className="page-content">
       <header className="page-header">
-        <h1 className="page-title">Leadlar</h1>
-        <p className="page-subtitle">CRM orqali kelgan murojaatlar va ularning holati</p>
+        <h1 className="page-title">CRM Leadlar</h1>
+        <p className="page-subtitle">Barcha leadlarni qidirish, filtrlash va kuzatish</p>
       </header>
 
       <FilterBar

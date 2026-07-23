@@ -1,7 +1,7 @@
 import { Menu, LogOut } from 'lucide-react';
 import { Button } from '@/shared/ui/Button';
 import { shortenUuid } from '@/shared/lib/actor';
-import { useActor } from '@/app/providers/ActorProvider';
+import { useActor } from '@/app/providers/useActor';
 
 interface HeaderProps {
   onMenuClick: () => void;
@@ -22,8 +22,6 @@ export function Header({ onMenuClick }: HeaderProps) {
         >
           <Menu size={20} />
         </Button>
-
-        <span className="app-header__brand-mobile">E-Bog'cha</span>
       </div>
 
       <div className="app-header__right">

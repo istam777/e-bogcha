@@ -1,7 +1,7 @@
 .table-wrapper {
   overflow-x: auto;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   background: var(--color-surface);
   box-shadow: var(--shadow-sm);
 }
@@ -14,21 +14,22 @@
 
 .lead-table th {
   text-align: left;
-  padding: 12px 16px;
+  padding: 14px 16px;
   font-weight: 600;
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--color-text-muted);
-  background: var(--color-background);
+  background: var(--color-surface-muted);
   border-bottom: 1px solid var(--color-border);
   white-space: nowrap;
 }
 
 .lead-table td {
-  padding: 12px 16px;
+  padding: 14px 16px;
   border-bottom: 1px solid var(--color-border-light);
   vertical-align: middle;
+  height: var(--row-height);
 }
 
 .lead-row:hover {
@@ -46,18 +47,23 @@
 .lead-row__name {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-weight: 500;
+  gap: 8px;
+  font-weight: 600;
+  color: var(--color-text-strong);
 }
 
 .lead-row__overdue-badge {
-  color: var(--color-warning);
+  color: var(--color-danger);
   display: inline-flex;
 }
 
 .lead-row__phone {
   font-family: var(--font-mono);
   font-size: 0.8125rem;
+  color: var(--color-text);
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .lead-row__source {

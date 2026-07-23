@@ -26,6 +26,12 @@ body {
   min-height: 100vh;
 }
 
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-serif);
+  color: var(--color-text-strong);
+  font-weight: 700;
+}
+
 a {
   color: var(--color-primary);
   text-decoration: none;
@@ -53,11 +59,10 @@ img {
 }
 
 :focus-visible {
-  outline: 2px solid var(--color-primary);
+  outline: 2px solid var(--color-gold);
   outline-offset: 2px;
 }
 
-/* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -76,7 +81,6 @@ img {
   background: var(--color-text-muted);
 }
 
-/* Screen reader only */
 .sr-only {
   position: absolute;
   width: 1px;

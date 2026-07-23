@@ -2,20 +2,21 @@
 .input-group {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
 .input-label {
   font-size: 0.8125rem;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--color-text);
 }
 
 .input-field {
-  padding: 8px 12px;
+  height: var(--input-height);
+  padding: 0 12px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  font-size: 0.875rem;
+  font-size: 0.9375rem;
   color: var(--color-text);
   background: var(--color-surface);
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
@@ -23,7 +24,7 @@
 }
 
 .input-field:hover {
-  border-color: var(--color-text-light);
+  border-color: var(--color-text-muted);
 }
 
 .input-field:focus {
@@ -42,9 +43,9 @@
 
 .input-select {
   appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%2364748b' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%23667085' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
-  background-position: right 10px center;
+  background-position: right 12px center;
   padding-right: 32px;
 }
 
@@ -59,7 +60,7 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  font-weight: 500;
+  font-weight: 600;
   border: 1px solid transparent;
   border-radius: var(--radius-md);
   cursor: pointer;
@@ -73,27 +74,30 @@
 }
 
 .btn--sm {
-  padding: 4px 10px;
+  height: 32px;
+  padding: 0 12px;
   font-size: 0.8125rem;
 }
 
 .btn--md {
-  padding: 8px 16px;
-  font-size: 0.875rem;
+  height: var(--input-height);
+  padding: 0 16px;
+  font-size: 0.9375rem;
 }
 
 .btn--lg {
-  padding: 10px 20px;
+  height: 48px;
+  padding: 0 20px;
   font-size: 1rem;
 }
 
 .btn--primary {
-  background: var(--color-primary);
-  color: #fff;
+  background: var(--color-gold);
+  color: #FFFFFF;
 }
 
 .btn--primary:hover:not(:disabled) {
-  background: var(--color-primary-hover);
+  background: var(--color-gold-hover);
 }
 
 .btn--secondary {
@@ -118,11 +122,11 @@
 
 .btn--danger {
   background: var(--color-danger);
-  color: #fff;
+  color: #FFFFFF;
 }
 
 .btn--danger:hover:not(:disabled) {
-  background: #dc2626;
+  background: #c43d3d;
 }
 
 /* Badge */
@@ -130,10 +134,10 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 2px 10px;
+  padding: 4px 12px;
   border-radius: 999px;
   font-size: 0.75rem;
-  font-weight: 500;
+  font-weight: 600;
   line-height: 1.5;
 }
 
@@ -174,14 +178,14 @@
 .badge--danger .badge__dot { background: var(--color-danger); }
 
 .badge--muted {
-  background: #F1F5F9;
+  background: var(--color-surface-muted);
   color: var(--color-text-muted);
 }
 .badge--muted .badge__dot { background: var(--color-text-light); }
 
 /* Skeleton */
 .skeleton {
-  background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+  background: linear-gradient(90deg, var(--color-border-light) 25%, var(--color-surface-muted) 50%, var(--color-border-light) 75%);
   background-size: 200% 100%;
   animation: skeleton-shimmer 1.5s infinite;
   border-radius: var(--radius-sm);
@@ -193,14 +197,14 @@
 }
 
 .skeleton-row td {
-  padding: 12px 16px;
+  padding: 14px 16px;
   border-bottom: 1px solid var(--color-border-light);
 }
 
 .skeleton-card {
   padding: 16px;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   display: flex;
   flex-direction: column;
   gap: 10px;

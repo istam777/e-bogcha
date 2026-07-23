@@ -1,14 +1,6 @@
-import { createContext, useContext, useState, useCallback, useMemo, type ReactNode } from 'react';
+import { useState, useCallback, useMemo, type ReactNode } from 'react';
 import { resolveActorId, setStoredActorId, clearStoredActorId } from '@/shared/lib/actor';
-
-interface ActorContextValue {
-  actorId: string;
-  isConfigured: boolean;
-  setActor: (uuid: string) => void;
-  resetActor: () => void;
-}
-
-const ActorContext = createContext<ActorContextValue | null>(null);
+import { ActorContext, type ActorContextValue } from './useActor';
 
 export function ActorProvider({ children }: { children: ReactNode }) {
   const [resolvedId, setResolvedId] = useState(() => resolveActorId());
@@ -23,7 +15,7 @@ export function ActorProvider({ children }: { children: ReactNode }) {
     setResolvedId(null);
   }, []);
 
-  const value = useMemo(
+  const value = useMemo<ActorContextValue>(
     () => ({
       actorId: resolvedId || '',
       isConfigured: !!resolvedId,
@@ -34,10 +26,4 @@ export function ActorProvider({ children }: { children: ReactNode }) {
   );
 
   return <ActorContext.Provider value={value}>{children}</ActorContext.Provider>;
-}
-
-export function useActor(): ActorContextValue {
-  const ctx = useContext(ActorContext);
-  if (!ctx) throw new Error('useActor must be used within ActorProvider');
-  return ctx;
 }

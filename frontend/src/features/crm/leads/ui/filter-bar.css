@@ -1,11 +1,11 @@
 .filter-bar {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 16px;
+  gap: 16px;
+  padding: var(--card-padding);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   box-shadow: var(--shadow-sm);
 }
 
@@ -16,14 +16,14 @@
 .filter-bar__main {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 12px;
+  gap: 16px;
 }
 
 .filter-bar__advanced {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 12px;
-  padding-top: 12px;
+  gap: 16px;
+  padding-top: 16px;
   border-top: 1px solid var(--color-border-light);
 }
 
@@ -31,7 +31,7 @@
   font-size: 0.8125rem;
   color: var(--color-warning);
   background: var(--color-warning-light);
-  padding: 8px 12px;
+  padding: 10px 14px;
   border-radius: var(--radius-md);
 }
 
@@ -40,7 +40,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding-top: 12px;
+  padding-top: 16px;
   border-top: 1px solid var(--color-border-light);
 }
 
@@ -61,7 +61,7 @@
 .filter-bar__actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 @media (max-width: 768px) {

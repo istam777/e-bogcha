@@ -11,22 +11,120 @@ beforeEach(() => {
   server.resetHandlers();
 });
 
-describe('Actor setup screen', () => {
+describe('Login page', () => {
   it('appears when actor is absent', () => {
     localStorage.clear();
+    window.history.pushState({}, '', '/crm/leads');
     render(<App />);
-    expect(screen.getByText(/Vaqtinchalik foydalanuvchini sozlash/)).toBeInTheDocument();
+    expect(screen.getByText(/Xush kelibsiz/)).toBeInTheDocument();
   });
 
-  it('valid actor opens the application', async () => {
+  it('renders official Oxu Kids branding', () => {
+    localStorage.clear();
+    window.history.pushState({}, '', '/login');
     render(<App />);
+    expect(screen.getByText('OXU KIDS CRM')).toBeInTheDocument();
+  });
+
+  it('has username and password fields', () => {
+    localStorage.clear();
+    window.history.pushState({}, '', '/login');
+    render(<App />);
+    expect(screen.getByLabelText('Login')).toBeInTheDocument();
+    expect(screen.getByLabelText('Parol')).toBeInTheDocument();
+  });
+
+  it('has no Google login control', () => {
+    localStorage.clear();
+    window.history.pushState({}, '', '/login');
+    render(<App />);
+    const text = document.body.textContent || '';
+    expect(text).not.toContain('Google');
+  });
+
+  it('has no social login control', () => {
+    localStorage.clear();
+    window.history.pushState({}, '', '/login');
+    render(<App />);
+    const text = document.body.textContent || '';
+    expect(text).not.toContain('Telegram');
+    expect(text).not.toContain('Apple');
+    expect(text).not.toContain('Facebook');
+  });
+
+  it('has no self-registration link', () => {
+    localStorage.clear();
+    window.history.pushState({}, '', '/login');
+    render(<App />);
+    const text = document.body.textContent || '';
+    expect(text).not.toContain("Ro'yxatdan o'tish");
+    expect(text).not.toContain('Registration');
+  });
+
+  it('arbitrary credentials do not create a session', async () => {
+    localStorage.clear();
+    window.history.pushState({}, '', '/login');
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.type(screen.getByLabelText('Login'), 'admin');
+    await user.type(screen.getByLabelText('Parol'), 'password123');
+    await user.click(screen.getByRole('button', { name: /Tizimga kirish/ }));
+
     await waitFor(() => {
-      expect(screen.getByText('Leadlar')).toBeInTheDocument();
+      expect(screen.getByText(/backend autentifikatsiya/)).toBeInTheDocument();
+    });
+
+    expect(localStorage.getItem('ebogcha_actor_user_id')).toBeNull();
+  });
+
+  it('password is not stored in localStorage', async () => {
+    localStorage.clear();
+    window.history.pushState({}, '', '/login');
+    render(<App />);
+    const user = userEvent.setup();
+
+    await user.type(screen.getByLabelText('Login'), 'admin');
+    await user.type(screen.getByLabelText('Parol'), 'secret123');
+    await user.click(screen.getByRole('button', { name: /Tizimga kirish/ }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/backend autentifikatsiya/)).toBeInTheDocument();
+    });
+
+    const localStorageKeys = Object.keys(localStorage);
+    for (const key of localStorageKeys) {
+      const value = localStorage.getItem(key);
+      expect(value).not.toContain('secret123');
+    }
+  });
+});
+
+describe('Development actor access', () => {
+  it('valid development actor redirects to CRM', async () => {
+    localStorage.clear();
+    window.history.pushState({}, '', '/login');
+    render(<App />);
+    const user = userEvent.setup();
+
+    const devActorInput = screen.getByPlaceholderText(/44444444/);
+    await user.type(devActorInput, '44444444-4444-4444-8444-444444444444');
+    await user.click(screen.getByRole('button', { name: /Davom etish/ }));
+
+    await waitFor(() => {
+      expect(screen.getAllByText('CRM Leadlar').length).toBeGreaterThan(0);
     });
   });
 });
 
 describe('Lead list rendering', () => {
+  it('valid actor opens the application', async () => {
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getAllByText('CRM Leadlar').length).toBeGreaterThan(0);
+    });
+  });
+
   it('shows loading state', async () => {
     render(<App />);
     const skeletons = document.querySelectorAll('.skeleton');
@@ -138,5 +236,25 @@ describe('Normalized phone', () => {
     });
     const allText = document.body.textContent || '';
     expect(allText).not.toContain('normalizedPhone');
+  });
+});
+
+describe('Unsupported controls absent', () => {
+  it('no Yangi lead action', async () => {
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getAllByText('CRM Leadlar').length).toBeGreaterThan(0);
+    });
+    const text = document.body.textContent || '';
+    expect(text).not.toContain('Yangi lead');
+  });
+
+  it('no Export action', async () => {
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getAllByText('CRM Leadlar').length).toBeGreaterThan(0);
+    });
+    const text = document.body.textContent || '';
+    expect(text).not.toContain('Export');
   });
 });

@@ -23,14 +23,9 @@ interface SidebarItem {
 }
 
 const NAV_ITEMS: SidebarItem[] = [
-  { label: 'Bosh sahifa', path: '/', icon: Home },
-  {
-    label: 'CRM',
-    path: '/crm/leads',
-    icon: Users,
-    disabled: false,
-  },
-  { label: 'Qabul / Shartnoma', path: '#', icon: GraduationCap, disabled: true },
+  { label: 'Bosh sahifa', path: '/', icon: Home, disabled: true },
+  { label: 'CRM Leadlar', path: '/crm/leads', icon: Users },
+  { label: 'Shartnomalar', path: '#', icon: GraduationCap, disabled: true },
   { label: 'Moliya', path: '#', icon: DollarSign, disabled: true },
   { label: 'Davomat', path: '#', icon: CalendarCheck, disabled: true },
   { label: 'Xodimlar', path: '#', icon: FileText, disabled: true },
@@ -47,19 +42,25 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         className={`sidebar ${isOpen ? 'sidebar--open' : ''}`}
         aria-label="Asosiy menyu"
       >
-        <div className="sidebar__header">
-          <div className="sidebar__brand">
-            <span className="sidebar__brand-name">E-Bog'cha</span>
-            <span className="sidebar__brand-sub">Oxu Kids</span>
+        <div className="sidebar__brand">
+          <img
+            src="/branding/oxu-kids-logo.png"
+            alt="Oxu Kids logo"
+            className="sidebar__logo"
+          />
+          <div className="sidebar__brand-text">
+            <span className="sidebar__brand-name">OXU KIDS CRM</span>
+            <span className="sidebar__brand-sub">e-bog'cha boshqaruv tizimi</span>
           </div>
-          <button
-            className="sidebar__close"
-            onClick={onClose}
-            aria-label="Menyuni yopish"
-          >
-            <X size={20} />
-          </button>
         </div>
+
+        <button
+          className="sidebar__close"
+          onClick={onClose}
+          aria-label="Menyuni yopish"
+        >
+          <X size={20} />
+        </button>
 
         <nav className="sidebar__nav">
           {NAV_ITEMS.map((item) => (
@@ -68,7 +69,15 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         </nav>
 
         <div className="sidebar__footer">
-          <span className="sidebar__version">v0.0.1</span>
+          <img
+            src="/branding/oxu-kids-logo.png"
+            alt=""
+            className="sidebar__footer-logo"
+            aria-hidden="true"
+          />
+          <p className="sidebar__footer-text">
+            Premium ta'lim muhitida baxtli bolalik sari!
+          </p>
         </div>
       </aside>
     </>
@@ -78,10 +87,9 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
 function SidebarLink({ item, onClick }: { item: SidebarItem; onClick: () => void }) {
   if (item.disabled) {
     return (
-      <div className="sidebar__link sidebar__link--disabled" title="Keyingi bosqichda">
+      <div className="sidebar__link sidebar__link--disabled" aria-disabled="true">
         <item.icon size={18} aria-hidden="true" />
         <span>{item.label}</span>
-        <span className="sidebar__badge">Keyingi bosqichda</span>
       </div>
     );
   }
