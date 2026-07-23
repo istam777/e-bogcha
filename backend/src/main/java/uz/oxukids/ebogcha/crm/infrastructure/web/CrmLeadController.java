@@ -16,8 +16,6 @@ import uz.oxukids.ebogcha.crm.application.port.in.ChangeLeadStatusUseCase;
 import uz.oxukids.ebogcha.crm.application.port.in.CreateLeadCommand;
 import uz.oxukids.ebogcha.crm.application.port.in.CreateLeadUseCase;
 import uz.oxukids.ebogcha.crm.application.port.in.GetLeadUseCase;
-import uz.oxukids.ebogcha.crm.domain.exception.LostReasonRequiredException;
-import uz.oxukids.ebogcha.crm.domain.model.LeadStatus;
 
 import java.net.URI;
 import java.util.UUID;
@@ -84,9 +82,6 @@ public class CrmLeadController {
             @Valid @RequestBody ChangeLeadStatusRequest request
     ) {
         UUID actorUserId = parseActor(actorHeader);
-        if (request.targetStatus() == LeadStatus.LOST && request.lostReasonId() == null) {
-            throw new LostReasonRequiredException();
-        }
         return mapper.toResponse(changeLeadStatusUseCase.changeLeadStatus(new ChangeLeadStatusCommand(
                 leadId,
                 request.targetStatus(),

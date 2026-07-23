@@ -6,6 +6,7 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 import uz.oxukids.ebogcha.crm.application.port.out.LeadRepository;
+import uz.oxukids.ebogcha.crm.domain.exception.DuplicateLeadException;
 import uz.oxukids.ebogcha.crm.domain.exception.LeadAlreadyOwnedException;
 import uz.oxukids.ebogcha.crm.domain.exception.LeadNotFoundException;
 import uz.oxukids.ebogcha.crm.domain.model.Lead;
@@ -95,7 +96,7 @@ public class JdbcLeadRepository implements LeadRepository {
                 .addValue("firstContactDueAt", databaseTime(lead.firstContactDueAt()))
                 .addValue("createdAt", databaseTime(lead.createdAt()));
         try {
-            jdbc.update(
+            int inserted = jdbc.update(
                     """
                     INSERT INTO leads (
                         id, branch_id, source_id, status_id, parent_or_guardian_name,
@@ -104,9 +105,13 @@ public class JdbcLeadRepository implements LeadRepository {
                         :id, :branchId, :sourceId, :statusId, :guardianName,
                         :firstContactDueAt, :createdAt, :createdAt
                     )
+                    ON CONFLICT (id) DO NOTHING
                     """,
                     leadParameters
             );
+            if (inserted == 0) {
+                throw new DuplicateLeadException();
+            }
             jdbc.update(
                     """
                     INSERT INTO lead_phones (

@@ -129,6 +129,36 @@ class CrmLeadApiIntegrationTest {
     }
 
     @Test
+    void duplicateLeadIdReturnsSanitizedConflictWithoutChangingOriginalLead() throws Exception {
+        Fixture fixture = insertFixture();
+        UUID leadId = UUID.randomUUID();
+        String originalPhone = exampleNationalPhone();
+        String duplicatePhone = alternateExamplePhone();
+        String originalGuardian = "Original Fictional Guardian";
+        String duplicateGuardian = "Private Duplicate Guardian";
+
+        mvc.perform(post("/api/v1/crm/leads")
+                        .contentType(APPLICATION_JSON)
+                        .content(createJson(fixture, leadId, originalPhone, originalGuardian)))
+                .andExpect(status().isCreated());
+
+        mvc.perform(post("/api/v1/crm/leads")
+                        .contentType(APPLICATION_JSON)
+                        .content(createJson(fixture, leadId, duplicatePhone, duplicateGuardian)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CRM_LEAD_DUPLICATE"))
+                .andExpect(content().string(not(containsString(leadId.toString()))))
+                .andExpect(content().string(not(containsString(originalPhone))))
+                .andExpect(content().string(not(containsString(duplicatePhone))))
+                .andExpect(content().string(not(containsString(originalGuardian))))
+                .andExpect(content().string(not(containsString(duplicateGuardian))));
+
+        org.assertj.core.api.Assertions.assertThat(guardianName(leadId)).isEqualTo(originalGuardian);
+        org.assertj.core.api.Assertions.assertThat(displayPhone(leadId)).isEqualTo(originalPhone);
+        org.assertj.core.api.Assertions.assertThat(leadPhoneCount(leadId)).isEqualTo(1);
+    }
+
+    @Test
     void operatorWithBranchAccessAcceptsLead() throws Exception {
         Fixture fixture = insertFixture();
         UUID leadId = createLead(fixture, exampleNationalPhone());
@@ -205,6 +235,44 @@ class CrmLeadApiIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("LOST"))
                 .andExpect(jsonPath("$.lostReasonId").value(fixture.lostReasonId().toString()));
+    }
+
+    @Test
+    void alreadyLostRetryWithoutReasonIsAuthorizedAndIdempotent() throws Exception {
+        Fixture fixture = insertFixture();
+        UUID leadId = createLead(fixture, exampleNationalPhone());
+        changeToLost(leadId, fixture.firstUserId(), fixture.lostReasonId());
+
+        mvc.perform(post("/api/v1/crm/leads/{leadId}/status-transitions", leadId)
+                        .header("X-Actor-User-Id", fixture.firstUserId())
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"targetStatus\":\"LOST\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("LOST"))
+                .andExpect(jsonPath("$.lostReasonId").value(fixture.lostReasonId().toString()));
+
+        org.assertj.core.api.Assertions.assertThat(statusHistoryCount(leadId)).isEqualTo(1);
+        org.assertj.core.api.Assertions.assertThat(lostReason(leadId))
+                .isEqualTo(fixture.lostReasonId());
+    }
+
+    @Test
+    void unauthorizedAlreadyLostRetryIsForbiddenAndPreservesHistory() throws Exception {
+        Fixture fixture = insertFixture();
+        UUID leadId = createLead(fixture, exampleNationalPhone());
+        changeToLost(leadId, fixture.firstUserId(), fixture.lostReasonId());
+
+        mvc.perform(post("/api/v1/crm/leads/{leadId}/status-transitions", leadId)
+                        .header("X-Actor-User-Id", fixture.ungrantedUserId())
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"targetStatus\":\"LOST\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("CRM_BRANCH_ACCESS_DENIED"));
+
+        org.assertj.core.api.Assertions.assertThat(currentStatus(leadId)).isEqualTo("LOST");
+        org.assertj.core.api.Assertions.assertThat(statusHistoryCount(leadId)).isEqualTo(1);
+        org.assertj.core.api.Assertions.assertThat(lostReason(leadId))
+                .isEqualTo(fixture.lostReasonId());
     }
 
     @Test
@@ -383,18 +451,43 @@ class CrmLeadApiIntegrationTest {
                 .andExpect(status().isOk());
     }
 
+    private void changeToLost(UUID leadId, UUID actorId, UUID lostReasonId) throws Exception {
+        mvc.perform(post("/api/v1/crm/leads/{leadId}/status-transitions", leadId)
+                        .header("X-Actor-User-Id", actorId)
+                        .contentType(APPLICATION_JSON)
+                        .content("""
+                                {"targetStatus":"LOST","lostReasonId":"%s"}
+                                """.formatted(lostReasonId)))
+                .andExpect(status().isOk());
+    }
+
     private String createJson(Fixture fixture, UUID leadId, String displayPhone) {
+        return createJson(
+                fixture, leadId, displayPhone, "Fictional API Guardian"
+        );
+    }
+
+    private String createJson(
+            Fixture fixture,
+            UUID leadId,
+            String displayPhone,
+            String guardianName
+    ) {
         return """
                 {
                   "leadId": "%s",
                   "organizationId": "%s",
                   "branchId": "%s",
                   "source": "PHONE",
-                  "parentOrGuardianName": "Fictional API Guardian",
+                  "parentOrGuardianName": "%s",
                   "displayPhone": "%s"
                 }
                 """.formatted(
-                leadId, fixture.organizationId(), fixture.branchId(), displayPhone
+                leadId,
+                fixture.organizationId(),
+                fixture.branchId(),
+                guardianName,
+                displayPhone
         );
     }
 
@@ -418,6 +511,38 @@ class CrmLeadApiIntegrationTest {
         );
     }
 
+    private int leadPhoneCount(UUID leadId) {
+        return jdbc.queryForObject(
+                "SELECT count(*) FROM lead_phones WHERE lead_id = ?",
+                Integer.class,
+                leadId
+        );
+    }
+
+    private String guardianName(UUID leadId) {
+        return jdbc.queryForObject(
+                "SELECT parent_or_guardian_name FROM leads WHERE id = ?",
+                String.class,
+                leadId
+        );
+    }
+
+    private String displayPhone(UUID leadId) {
+        return jdbc.queryForObject(
+                "SELECT display_phone FROM lead_phones WHERE lead_id = ? AND is_primary",
+                String.class,
+                leadId
+        );
+    }
+
+    private UUID lostReason(UUID leadId) {
+        return jdbc.queryForObject(
+                "SELECT lost_reason_id FROM leads WHERE id = ?",
+                UUID.class,
+                leadId
+        );
+    }
+
     private String currentStatus(UUID leadId) {
         return jdbc.queryForObject(
                 """
@@ -437,6 +562,17 @@ class CrmLeadApiIntegrationTest {
                 util.getExampleNumber("UZ"),
                 PhoneNumberUtil.PhoneNumberFormat.NATIONAL
         );
+    }
+
+    private static String alternateExamplePhone() {
+        PhoneNumberUtil util = PhoneNumberUtil.getInstance();
+        String canonical = util.format(
+                util.getExampleNumber("UZ"),
+                PhoneNumberUtil.PhoneNumberFormat.E164
+        );
+        char lastDigit = canonical.charAt(canonical.length() - 1);
+        char replacement = lastDigit == '9' ? '8' : '9';
+        return canonical.substring(0, canonical.length() - 1) + replacement;
     }
 
     private record Fixture(

@@ -55,7 +55,9 @@ and:
 ```
 
 Duplicate candidates are returned in deterministic UUID order and do not block
-creation. Supported sources are `SOCIAL_MEDIA`, `PHONE`, and `WALK_IN`.
+creation. Reusing an existing `leadId` returns `409 Conflict` with code
+`CRM_LEAD_DUPLICATE`. Supported sources are `SOCIAL_MEDIA`, `PHONE`, and
+`WALK_IN`.
 
 ## Get a lead
 
@@ -89,8 +91,10 @@ lead branch, including for same-status requests.
 ```
 
 A successful request returns `200 OK` with the updated lead. `lostReasonId` is
-required for `LOST`, is cleared when leaving `LOST`, and is otherwise optional.
-A same-status request is idempotent and does not append status history.
+required when actually entering `LOST`, is cleared when leaving `LOST`, and is
+otherwise optional. Retrying `LOST` for a lead that is already `LOST` is
+idempotent, does not require resending `lostReasonId`, preserves the existing
+reason, and does not append status history.
 
 Supported statuses are `NEW`, `CONTACTED`, `TOUR_PLANNED`, `SUCCESSFUL`,
 `NO_SHOW`, `LOST`, and `ARCHIVED`. The domain transition policy determines
