@@ -212,7 +212,9 @@ public class JdbcLeadRepository implements LeadRepository {
         Objects.requireNonNull(operatorId, "operatorId must not be null");
 
         OwnershipState state = lockOwnershipState(leadId);
-        requireUserOrganization(operatorId, state.organizationId());
+        requireUserBranchAccess(
+                operatorId, state.organizationId(), state.branchId()
+        );
         if (state.activeOwnerId() != null) {
             assertOwnerProjection(state);
             if (state.activeOwnerId().equals(operatorId)) {
@@ -417,6 +419,35 @@ public class JdbcLeadRepository implements LeadRepository {
         }
     }
 
+    private void requireUserBranchAccess(
+            UUID userId,
+            UUID organizationId,
+            UUID branchId
+    ) {
+        Boolean allowed = jdbc.queryForObject(
+                """
+                SELECT EXISTS (
+                    SELECT 1
+                      FROM users u
+                      JOIN user_branch_access uba ON uba.user_id = u.id
+                      JOIN branches b ON b.id = uba.branch_id
+                     WHERE u.id = :userId
+                       AND u.organization_id = :organizationId
+                       AND uba.branch_id = :branchId
+                       AND b.organization_id = :organizationId
+                )
+                """,
+                new MapSqlParameterSource()
+                        .addValue("userId", userId)
+                        .addValue("organizationId", organizationId)
+                        .addValue("branchId", branchId),
+                Boolean.class
+        );
+        if (!Boolean.TRUE.equals(allowed)) {
+            throw new UserBranchAccessDeniedException();
+        }
+    }
+
     private void requireLostReasonOrganization(UUID lostReasonId, UUID organizationId) {
         Boolean matches = jdbc.queryForObject(
                 """
@@ -488,6 +519,7 @@ public class JdbcLeadRepository implements LeadRepository {
         List<LockedLeadOwner> rows = jdbc.query(
                 """
                 SELECT b.organization_id,
+                       l.branch_id,
                        l.owner_user_id AS projected_owner_id
                   FROM leads l
                   JOIN branches b ON b.id = l.branch_id
@@ -497,6 +529,7 @@ public class JdbcLeadRepository implements LeadRepository {
                 new MapSqlParameterSource("leadId", leadId),
                 (resultSet, rowNumber) -> new LockedLeadOwner(
                         resultSet.getObject("organization_id", UUID.class),
+                        resultSet.getObject("branch_id", UUID.class),
                         resultSet.getObject("projected_owner_id", UUID.class)
                 )
         );
@@ -519,6 +552,7 @@ public class JdbcLeadRepository implements LeadRepository {
         }
         return new OwnershipState(
                 lockedLead.organizationId(),
+                lockedLead.branchId(),
                 lockedLead.projectedOwnerId(),
                 activeOwners.isEmpty() ? null : activeOwners.getFirst()
         );
@@ -584,10 +618,15 @@ public class JdbcLeadRepository implements LeadRepository {
 
     private record StatusState(UUID organizationId, UUID statusId, String statusCode) {}
 
-    private record LockedLeadOwner(UUID organizationId, UUID projectedOwnerId) {}
+    private record LockedLeadOwner(
+            UUID organizationId,
+            UUID branchId,
+            UUID projectedOwnerId
+    ) {}
 
     private record OwnershipState(
             UUID organizationId,
+            UUID branchId,
             UUID projectedOwnerId,
             UUID activeOwnerId
     ) {}

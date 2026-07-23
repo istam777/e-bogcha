@@ -143,6 +143,31 @@ class CrmJdbcPersistenceIntegrationTest {
     }
 
     @Test
+    void ownershipRequiresExplicitBranchAccess() {
+        Fixture fixture = insertFixture();
+        UUID leadId = createLead(fixture);
+
+        assertThatThrownBy(() -> service.acceptLead(
+                new AcceptLeadCommand(leadId, fixture.ungrantedUserId())
+        )).isInstanceOf(UserBranchAccessDeniedException.class);
+        assertThat(activeAssignmentCount(leadId)).isZero();
+        assertThat(ownerProjection(leadId)).isNull();
+
+        grantBranchAccess(
+                fixture.ungrantedUserId(),
+                fixture.branchId(),
+                fixture.firstUserId()
+        );
+        Lead claimed = service.acceptLead(
+                new AcceptLeadCommand(leadId, fixture.ungrantedUserId())
+        );
+
+        assertThat(claimed.ownerOperatorId()).contains(fixture.ungrantedUserId());
+        assertThat(activeAssignmentCount(leadId)).isEqualTo(1);
+        assertThat(ownerProjection(leadId)).isEqualTo(fixture.ungrantedUserId());
+    }
+
+    @Test
     void concurrentOwnershipClaimsProduceOneWinner() throws Exception {
         Fixture fixture = insertFixture();
         UUID leadId = createLead(fixture);
@@ -285,6 +310,7 @@ class CrmJdbcPersistenceIntegrationTest {
         UUID lostReasonId = UUID.randomUUID();
         UUID firstUserId = UUID.randomUUID();
         UUID secondUserId = UUID.randomUUID();
+        UUID ungrantedUserId = UUID.randomUUID();
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
         String suffix = organizationId.toString().substring(0, 8);
         UUID activeUserStatusId = jdbc.queryForObject(
@@ -328,13 +354,23 @@ class CrmJdbcPersistenceIntegrationTest {
         );
         insertUser(firstUserId, organizationId, activeUserStatusId, "first-" + suffix, now);
         insertUser(secondUserId, organizationId, activeUserStatusId, "second-" + suffix, now);
+        insertUser(
+                ungrantedUserId,
+                organizationId,
+                activeUserStatusId,
+                "ungranted-" + suffix,
+                now
+        );
+        grantBranchAccess(firstUserId, branchId, firstUserId);
+        grantBranchAccess(secondUserId, branchId, firstUserId);
 
         return new Fixture(
                 organizationId,
                 branchId,
                 lostReasonId,
                 firstUserId,
-                secondUserId
+                secondUserId,
+                ungrantedUserId
         );
     }
 
@@ -373,6 +409,20 @@ class CrmJdbcPersistenceIntegrationTest {
                 ) VALUES (?, ?, ?, 'CRM Test Operator', ?, ?, ?)
                 """,
                 id, organizationId, username, statusId, now, now
+        );
+    }
+
+    private void grantBranchAccess(UUID userId, UUID branchId, UUID grantedBy) {
+        jdbc.update(
+                """
+                INSERT INTO user_branch_access (
+                    user_id, branch_id, granted_by, granted_at
+                ) VALUES (?, ?, ?, ?)
+                """,
+                userId,
+                branchId,
+                grantedBy,
+                OffsetDateTime.now(ZoneOffset.UTC)
         );
     }
 
@@ -488,7 +538,8 @@ class CrmJdbcPersistenceIntegrationTest {
             UUID branchId,
             UUID lostReasonId,
             UUID firstUserId,
-            UUID secondUserId
+            UUID secondUserId,
+            UUID ungrantedUserId
     ) {}
 
     private record StatusHistory(
