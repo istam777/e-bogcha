@@ -1,0 +1,42 @@
+.page-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.page-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.page-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.page-subtitle {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+.skeleton-table {
+  overflow: hidden;
+}
+
+.mobile-skeleton {
+  display: none;
+  flex-direction: column;
+  gap: 12px;
+}
+
+@media (max-width: 768px) {
+  .skeleton-table {
+    display: none;
+  }
+
+  .mobile-skeleton {
+    display: flex;
+  }
+}

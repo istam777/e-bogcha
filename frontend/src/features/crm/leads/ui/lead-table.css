@@ -1,0 +1,84 @@
+.table-wrapper {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.lead-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.lead-table th {
+  text-align: left;
+  padding: 12px 16px;
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+  background: var(--color-background);
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.lead-table td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-border-light);
+  vertical-align: middle;
+}
+
+.lead-row:hover {
+  background: var(--color-surface-hover);
+}
+
+.lead-row--overdue {
+  background: var(--color-danger-light);
+}
+
+.lead-row--overdue:hover {
+  background: #fde2e2;
+}
+
+.lead-row__name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+}
+
+.lead-row__overdue-badge {
+  color: var(--color-warning);
+  display: inline-flex;
+}
+
+.lead-row__phone {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+}
+
+.lead-row__source {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+}
+
+.text-muted {
+  color: var(--color-text-light);
+  font-style: italic;
+}
+
+.text-danger {
+  color: var(--color-danger);
+}
+
+@media (max-width: 768px) {
+  .table-wrapper {
+    display: none;
+  }
+}
