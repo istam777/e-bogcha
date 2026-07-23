@@ -59,6 +59,94 @@ creation. Reusing an existing `leadId` returns `409 Conflict` with code
 `CRM_LEAD_DUPLICATE`. Supported sources are `SOCIAL_MEDIA`, `PHONE`, and
 `WALK_IN`.
 
+## Search leads
+
+`GET /api/v1/crm/leads`
+
+The request requires `X-Actor-User-Id`. Results include only leads from branches
+that have an explicit `user_branch_access` row for the actor. Organization scope
+is inferred from the actor and accessible branches; callers cannot supply or
+override it. A valid actor with no accessible branches receives an empty page.
+Requesting an inaccessible `branchId` returns `403 Forbidden` with code
+`CRM_BRANCH_ACCESS_DENIED`.
+
+The endpoint supports these query parameters:
+
+| Parameter | Default | Rules |
+|---|---|---|
+| `q` | none | Trimmed, 2-100 characters; case-insensitive guardian-name substring or formatting-insensitive primary-phone digits |
+| `branchId` | none | UUID of an explicitly accessible branch |
+| `status` | none | One of the supported lead status codes |
+| `source` | none | `SOCIAL_MEDIA`, `PHONE`, or `WALK_IN` |
+| `ownerOperatorId` | none | UUID of the assigned operator |
+| `ownerState` | `ALL` | `ALL`, `ASSIGNED`, or `UNASSIGNED` |
+| `overdueOnly` | `false` | When `true`, includes only overdue leads |
+| `createdFrom` | none | ISO-8601 instant; inclusive lower boundary |
+| `createdTo` | none | ISO-8601 instant; exclusive upper boundary |
+| `page` | `0` | Zero-based and non-negative |
+| `size` | `20` | Between 1 and 100 |
+
+All supplied filters are combined with `AND`. `ownerOperatorId` may be used
+with `ALL` or `ASSIGNED`, but not with `UNASSIGNED`. `createdFrom` must not be
+after `createdTo`. Invalid values or combinations return `400 Bad Request` with
+code `CRM_REQUEST_INVALID`.
+
+Guardian-name matching is case-insensitive and uses the trimmed text as a
+substring. A phone-shaped `q` may contain spaces, `+`, hyphens, or parentheses;
+those formatting characters are ignored and its digits are matched against the
+primary phone. The internal normalized phone is never returned. Arbitrary name
+queries are not treated as phone-only searches.
+
+A lead is overdue only when its current status is `NEW` and
+`firstContactDueAt` is before the application clock instant used for that
+request. Both filtering and the returned `overdue` field use that same instant.
+
+Results always use deterministic ordering by `createdAt DESC`, then `id DESC`.
+Pagination is performed in the database. A page beyond the last page returns
+`200 OK` with an empty `items` array.
+
+Example:
+
+```http
+GET /api/v1/crm/leads?q=fictional&status=NEW&ownerState=UNASSIGNED&page=0&size=20
+X-Actor-User-Id: 44444444-4444-4444-8444-444444444444
+```
+
+```json
+{
+  "items": [
+    {
+      "id": "11111111-1111-4111-8111-111111111111",
+      "organizationId": "22222222-2222-4222-8222-222222222222",
+      "branchId": "33333333-3333-4333-8333-333333333333",
+      "branchName": "Fictional Central Branch",
+      "source": "PHONE",
+      "status": "NEW",
+      "parentOrGuardianName": "Fictional Guardian",
+      "displayPhone": "+998 90 123 45 67",
+      "ownerOperatorId": null,
+      "ownerDisplayName": null,
+      "createdAt": "2026-07-23T08:00:00Z",
+      "updatedAt": "2026-07-23T08:00:00Z",
+      "firstContactDueAt": "2026-07-24T08:00:00Z",
+      "overdue": false
+    }
+  ],
+  "page": 0,
+  "size": 20,
+  "totalElements": 1,
+  "totalPages": 1,
+  "hasPrevious": false,
+  "hasNext": false
+}
+```
+
+Each list item contains only the projected fields shown above. Source and
+status use public API codes, branch and owner names are display projections,
+and both owner fields are `null` for an unassigned lead. Timestamps are
+ISO-8601 UTC instants. Source/status reference IDs and normalized phone values
+are not exposed.
+
 ## Get a lead
 
 `GET /api/v1/crm/leads/{leadId}`
