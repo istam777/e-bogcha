@@ -14,9 +14,7 @@ public interface LeadRepository {
     Optional<Lead> findById(UUID leadId);
 
     /**
-     * Persists a new lead and its primary phone in one transaction. The adapter
-     * must repeat or serialize the organization-scoped normalized-phone check so
-     * a concurrent duplicate cannot be committed silently.
+     * Persists a new lead and its primary phone in one transaction.
      */
     void saveNew(Lead lead);
 
@@ -24,7 +22,12 @@ public interface LeadRepository {
      * Persists the current status and appends the matching status-history entry
      * atomically. Status history must not be overwritten.
      */
-    void saveStatusChange(Lead lead, LeadStatus previousStatus, Instant changedAt);
+    void saveStatusChange(
+            Lead lead,
+            LeadStatus previousStatus,
+            Instant changedAt,
+            UUID changedByUserId
+    );
 
     /**
      * Claims ownership atomically. Implementations must make the first successful

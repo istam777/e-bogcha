@@ -6,5 +6,6 @@ public enum LeadStatus {
     TOUR_PLANNED,
     SUCCESSFUL,
     NO_SHOW,
+    LOST,
     ARCHIVED
 }

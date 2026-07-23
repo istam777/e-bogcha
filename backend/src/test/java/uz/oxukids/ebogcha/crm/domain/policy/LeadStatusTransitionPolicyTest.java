@@ -16,6 +16,8 @@ class LeadStatusTransitionPolicyTest {
         assertThat(policy.allows(LeadStatus.TOUR_PLANNED, LeadStatus.SUCCESSFUL)).isTrue();
         assertThat(policy.allows(LeadStatus.TOUR_PLANNED, LeadStatus.NO_SHOW)).isTrue();
         assertThat(policy.allows(LeadStatus.NO_SHOW, LeadStatus.TOUR_PLANNED)).isTrue();
+        assertThat(policy.allows(LeadStatus.NEW, LeadStatus.LOST)).isTrue();
+        assertThat(policy.allows(LeadStatus.LOST, LeadStatus.NEW)).isTrue();
     }
 
     @Test

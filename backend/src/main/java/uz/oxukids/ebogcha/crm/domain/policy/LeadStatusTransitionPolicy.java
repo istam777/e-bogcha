@@ -20,14 +20,19 @@ public final class LeadStatusTransitionPolicy {
 
     public static LeadStatusTransitionPolicy standard() {
         EnumMap<LeadStatus, Set<LeadStatus>> transitions = new EnumMap<>(LeadStatus.class);
-        transitions.put(LeadStatus.NEW, EnumSet.of(LeadStatus.CONTACTED, LeadStatus.ARCHIVED));
+        transitions.put(LeadStatus.NEW,
+                EnumSet.of(LeadStatus.CONTACTED, LeadStatus.LOST, LeadStatus.ARCHIVED));
         transitions.put(LeadStatus.CONTACTED,
-                EnumSet.of(LeadStatus.TOUR_PLANNED, LeadStatus.SUCCESSFUL, LeadStatus.ARCHIVED));
+                EnumSet.of(LeadStatus.TOUR_PLANNED, LeadStatus.SUCCESSFUL,
+                        LeadStatus.LOST, LeadStatus.ARCHIVED));
         transitions.put(LeadStatus.TOUR_PLANNED,
-                EnumSet.of(LeadStatus.SUCCESSFUL, LeadStatus.NO_SHOW, LeadStatus.ARCHIVED));
+                EnumSet.of(LeadStatus.SUCCESSFUL, LeadStatus.NO_SHOW,
+                        LeadStatus.LOST, LeadStatus.ARCHIVED));
         transitions.put(LeadStatus.NO_SHOW,
-                EnumSet.of(LeadStatus.CONTACTED, LeadStatus.TOUR_PLANNED, LeadStatus.ARCHIVED));
-        transitions.put(LeadStatus.SUCCESSFUL, EnumSet.of(LeadStatus.ARCHIVED));
+                EnumSet.of(LeadStatus.CONTACTED, LeadStatus.TOUR_PLANNED,
+                        LeadStatus.LOST, LeadStatus.ARCHIVED));
+        transitions.put(LeadStatus.SUCCESSFUL, EnumSet.of(LeadStatus.LOST, LeadStatus.ARCHIVED));
+        transitions.put(LeadStatus.LOST, EnumSet.of(LeadStatus.NEW, LeadStatus.ARCHIVED));
         transitions.put(LeadStatus.ARCHIVED, EnumSet.of(LeadStatus.NEW));
         return new LeadStatusTransitionPolicy(transitions);
     }
