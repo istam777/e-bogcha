@@ -8,5 +8,9 @@ import java.util.UUID;
 @FunctionalInterface
 public interface DuplicateLeadDiscoveryPort {
 
-    Set<UUID> findCandidateIds(UUID organizationId, PhoneNumber normalizedPhone);
+    Set<UUID> findCandidateIds(
+            UUID organizationId,
+            PhoneNumber normalizedPhone,
+            UUID excludedLeadId
+    );
 }
