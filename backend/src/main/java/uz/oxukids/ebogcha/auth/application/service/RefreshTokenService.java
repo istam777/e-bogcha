@@ -1,15 +1,7 @@
 package uz.oxukids.ebogcha.auth.application.service;
 
-import java.util.UUID;
-
 public interface RefreshTokenService {
+    RefreshResult refresh(String refreshToken, String ip, String userAgent);
 
-    RefreshResult refresh(String refreshToken);
-
-    record RefreshResult(
-            String accessToken,
-            String refreshToken,
-            UUID userId
-    ) {
-    }
+    record RefreshResult(String accessToken, String refreshToken, java.util.UUID userId) {}
 }

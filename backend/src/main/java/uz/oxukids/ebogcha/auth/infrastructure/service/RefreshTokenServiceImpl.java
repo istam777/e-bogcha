@@ -2,14 +2,14 @@ package uz.oxukids.ebogcha.auth.infrastructure.service;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import uz.oxukids.ebogcha.auth.application.exception.RefreshTokenException;
-import uz.oxukids.ebogcha.auth.application.exception.RefreshTokenReusedException;
-import uz.oxukids.ebogcha.auth.application.port.out.AuditLogRepository;
-import uz.oxukids.ebogcha.auth.application.port.out.PrincipalRepository;
-import uz.oxukids.ebogcha.auth.application.port.out.RefreshTokenRepository;
+import uz.oxukids.ebogcha.auth.application.port.out.*;
 import uz.oxukids.ebogcha.auth.application.service.RefreshTokenService;
-import uz.oxukids.ebogcha.auth.infrastructure.security.JwtTokenProvider;
-import uz.oxukids.ebogcha.auth.infrastructure.security.RefreshTokenGenerator;
+import uz.oxukids.ebogcha.auth.domain.exception.RefreshTokenException;
+import uz.oxukids.ebogcha.auth.domain.exception.RefreshTokenReusedException;
+import uz.oxukids.ebogcha.auth.domain.principal.AuthenticatedPrincipal;
+import uz.oxukids.ebogcha.auth.infrastructure.configuration.AuthProperties;
+import uz.oxukids.ebogcha.auth.infrastructure.security.AuthJwtEncoder;
+import uz.oxukids.ebogcha.auth.infrastructure.security.AuthRefreshTokenGenerator;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -17,39 +17,48 @@ import java.util.Map;
 import java.util.UUID;
 
 @Service
-public class RefreshTokenServiceImpl implements RefreshTokenService {
+class RefreshTokenServiceImpl implements RefreshTokenService {
 
     private final RefreshTokenRepository refreshTokenRepository;
+    private final AuthUserRepository authUserRepository;
     private final PrincipalRepository principalRepository;
-    private final JwtTokenProvider jwtTokenProvider;
-    private final RefreshTokenGenerator refreshTokenGenerator;
+    private final AuthJwtEncoder jwtEncoder;
+    private final AuthRefreshTokenGenerator refreshTokenGenerator;
     private final AuditLogRepository auditLogRepository;
+    private final AuthProperties authProperties;
+    private final Clock clock;
 
-    public RefreshTokenServiceImpl(
+    RefreshTokenServiceImpl(
             RefreshTokenRepository refreshTokenRepository,
+            AuthUserRepository authUserRepository,
             PrincipalRepository principalRepository,
-            JwtTokenProvider jwtTokenProvider,
-            RefreshTokenGenerator refreshTokenGenerator,
-            AuditLogRepository auditLogRepository
+            AuthJwtEncoder jwtEncoder,
+            AuthRefreshTokenGenerator refreshTokenGenerator,
+            AuditLogRepository auditLogRepository,
+            AuthProperties authProperties,
+            Clock clock
     ) {
         this.refreshTokenRepository = refreshTokenRepository;
+        this.authUserRepository = authUserRepository;
         this.principalRepository = principalRepository;
-        this.jwtTokenProvider = jwtTokenProvider;
+        this.jwtEncoder = jwtEncoder;
         this.refreshTokenGenerator = refreshTokenGenerator;
         this.auditLogRepository = auditLogRepository;
+        this.authProperties = authProperties;
+        this.clock = clock;
     }
 
     @Override
     @Transactional
-    public RefreshResult refresh(String rawRefreshToken) {
+    public RefreshResult refresh(String rawRefreshToken, String ip, String userAgent) {
         if (rawRefreshToken == null || rawRefreshToken.isBlank()) {
             throw new RefreshTokenException("No refresh token provided");
         }
 
         String tokenHash = refreshTokenGenerator.hashToken(rawRefreshToken);
-        Instant now = Instant.now();
+        Instant now = clock.now();
 
-        var tokenOpt = refreshTokenRepository.findByTokenHash(tokenHash);
+        var tokenOpt = refreshTokenRepository.findByTokenHashForUpdate(tokenHash);
         if (tokenOpt.isEmpty()) {
             throw new RefreshTokenException("Invalid refresh token");
         }
@@ -57,34 +66,36 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
         var token = tokenOpt.get();
 
         if (token.isRevoked()) {
-            // Reuse detection
-            refreshTokenRepository.revokeAllActiveByUserId(token.userId());
+            refreshTokenRepository.revokeAllActiveByUserId(token.userId(), now);
             auditLogRepository.write(null, token.userId(), token.userId(),
                     "USER", token.userId(), "AUTH_REFRESH_REUSE_DETECTED",
-                    null, null, null, Map.of());
-            throw new RefreshTokenReusedException();
+                    null, ip, userAgent, Map.of());
+            throw new RefreshTokenReusedException(token.userId());
         }
 
         if (token.isExpired(now)) {
             throw new RefreshTokenException("Refresh token expired");
         }
 
-        // Revoke old token
-        refreshTokenRepository.revokeById(token.id());
+        refreshTokenRepository.revokeById(token.id(), now);
 
-        // Generate new tokens
-        var principal = principalRepository.loadPrincipal(token.userId());
-        String newAccessToken = jwtTokenProvider.createAccessToken(principal);
+        var userOpt = authUserRepository.findById(token.userId());
+        if (userOpt.isEmpty() || !userOpt.get().isAuthenticationEligible()) {
+            throw new RefreshTokenException("Account no longer active");
+        }
+
+        AuthenticatedPrincipal principal = principalRepository.loadPrincipal(token.userId());
+        String newAccessToken = jwtEncoder.encode(principal);
         String newRawRefreshToken = refreshTokenGenerator.generateRawToken();
         String newHash = refreshTokenGenerator.hashToken(newRawRefreshToken);
-        UUID newRefreshId = UUID.randomUUID();
 
-        refreshTokenRepository.save(newRefreshId, token.userId(), newHash,
-                now.plus(Duration.ofDays(30)), null, null);
+        refreshTokenRepository.save(UUID.randomUUID(), token.userId(), newHash,
+                now.plus(Duration.ofSeconds(authProperties.jwt().refreshExpirationSeconds())),
+                ip, userAgent);
 
-        auditLogRepository.write(null, token.userId(), token.userId(),
+        auditLogRepository.write(userOpt.get().organizationId(), token.userId(), token.userId(),
                 "USER", token.userId(), "AUTH_REFRESH_SUCCEEDED",
-                null, null, null, Map.of());
+                null, ip, userAgent, Map.of());
 
         return new RefreshResult(newAccessToken, newRawRefreshToken, token.userId());
     }

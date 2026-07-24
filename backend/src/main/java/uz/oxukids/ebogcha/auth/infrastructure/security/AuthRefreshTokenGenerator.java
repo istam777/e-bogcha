@@ -9,7 +9,7 @@ import java.security.SecureRandom;
 import java.util.Base64;
 
 @Component
-public class RefreshTokenGenerator {
+public class AuthRefreshTokenGenerator {
 
     private final SecureRandom secureRandom = new SecureRandom();
 

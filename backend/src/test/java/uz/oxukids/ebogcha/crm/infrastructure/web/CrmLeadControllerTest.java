@@ -43,8 +43,6 @@ import uz.oxukids.ebogcha.auth.application.port.out.RefreshTokenRepository;
 import uz.oxukids.ebogcha.auth.application.port.out.AuditLogRepository;
 
 import org.springframework.security.web.SecurityFilterChain;
-import uz.oxukids.ebogcha.auth.infrastructure.web.DevActorFilter;
-import uz.oxukids.ebogcha.auth.infrastructure.web.SecurityConfiguration;
 
 @WebMvcTest(value = CrmLeadController.class, excludeAutoConfiguration = SecurityAutoConfiguration.class)
 @AutoConfigureMockMvc(addFilters = false)

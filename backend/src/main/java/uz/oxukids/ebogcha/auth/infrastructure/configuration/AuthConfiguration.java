@@ -2,21 +2,24 @@ package uz.oxukids.ebogcha.auth.infrastructure.configuration;
 
 import java.time.Instant;
 
+import javax.crypto.SecretKey;
+import javax.crypto.spec.SecretKeySpec;
+
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import uz.oxukids.ebogcha.auth.application.port.out.AuditLogRepository;
-import uz.oxukids.ebogcha.auth.application.port.out.AuthUserRepository;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtEncoder;
+import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
+import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
+
+import com.nimbusds.jose.jwk.source.ImmutableSecret;
+
 import uz.oxukids.ebogcha.auth.application.port.out.Clock;
-import uz.oxukids.ebogcha.auth.application.port.out.PrincipalRepository;
-import uz.oxukids.ebogcha.auth.application.port.out.RefreshTokenRepository;
-import uz.oxukids.ebogcha.auth.infrastructure.security.JwtTokenProvider;
-import uz.oxukids.ebogcha.auth.infrastructure.security.RefreshTokenGenerator;
-import uz.oxukids.ebogcha.auth.infrastructure.service.GetCurrentUserServiceImpl;
-import uz.oxukids.ebogcha.auth.infrastructure.service.LoginServiceImpl;
-import uz.oxukids.ebogcha.auth.infrastructure.service.LogoutServiceImpl;
-import uz.oxukids.ebogcha.auth.infrastructure.service.RefreshTokenServiceImpl;
+import uz.oxukids.ebogcha.auth.infrastructure.security.AuthRefreshTokenGenerator;
+import uz.oxukids.ebogcha.auth.infrastructure.security.CurrentPrincipalResolver;
 
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(AuthProperties.class)
@@ -33,59 +36,38 @@ public class AuthConfiguration {
     }
 
     @Bean
-    LoginServiceImpl loginService(
-            AuthUserRepository authUserRepository,
-            PrincipalRepository principalRepository,
-            RefreshTokenRepository refreshTokenRepository,
-            AuditLogRepository auditLogRepository,
-            AuthProperties authProperties
-    ) {
-        var passwordEncoder = new uz.oxukids.ebogcha.auth.infrastructure.security.PasswordEncoder();
-        var jwtTokenProvider = new JwtTokenProvider(authProperties);
-        var refreshTokenGenerator = new RefreshTokenGenerator();
+    SecretKey jwtSecretKey(@Value("${auth.jwt.secret-base64}") String secretBase64) {
+        byte[] keyBytes = java.util.Base64.getDecoder().decode(secretBase64);
+        if (keyBytes.length < 32) {
+            throw new IllegalStateException("JWT secret must decode to at least 32 bytes, got " + keyBytes.length);
+        }
+        return new SecretKeySpec(keyBytes, "HmacSHA256");
+    }
 
-        return new LoginServiceImpl(
-                authUserRepository,
-                principalRepository,
-                passwordEncoder,
-                jwtTokenProvider,
-                refreshTokenGenerator,
-                refreshTokenRepository,
-                auditLogRepository,
-                authProperties
+    @Bean
+    JwtEncoder jwtEncoder(SecretKey jwtSecretKey) {
+        return new NimbusJwtEncoder(new ImmutableSecret<>(jwtSecretKey));
+    }
+
+    @Bean
+    JwtDecoder jwtDecoder(
+            SecretKey jwtSecretKey,
+            @Value("${auth.jwt.issuer:e-bogcha}") String issuer
+    ) {
+        NimbusJwtDecoder decoder = NimbusJwtDecoder.withSecretKey(jwtSecretKey).build();
+        decoder.setJwtValidator(
+            org.springframework.security.oauth2.jwt.JwtValidators.createDefaultWithIssuer(issuer)
         );
+        return decoder;
     }
 
     @Bean
-    RefreshTokenServiceImpl refreshTokenService(
-            RefreshTokenRepository refreshTokenRepository,
-            PrincipalRepository principalRepository,
-            AuditLogRepository auditLogRepository,
-            AuthProperties authProperties
-    ) {
-        var jwtTokenProvider = new JwtTokenProvider(authProperties);
-        var refreshTokenGenerator = new RefreshTokenGenerator();
-
-        return new RefreshTokenServiceImpl(
-                refreshTokenRepository,
-                principalRepository,
-                jwtTokenProvider,
-                refreshTokenGenerator,
-                auditLogRepository
-        );
+    AuthRefreshTokenGenerator authRefreshTokenGenerator() {
+        return new AuthRefreshTokenGenerator();
     }
 
     @Bean
-    LogoutServiceImpl logoutService(
-            RefreshTokenRepository refreshTokenRepository,
-            AuditLogRepository auditLogRepository
-    ) {
-        var refreshTokenGenerator = new RefreshTokenGenerator();
-        return new LogoutServiceImpl(refreshTokenRepository, refreshTokenGenerator, auditLogRepository);
-    }
-
-    @Bean
-    GetCurrentUserServiceImpl getCurrentUserService(PrincipalRepository principalRepository) {
-        return new GetCurrentUserServiceImpl(principalRepository);
+    CurrentPrincipalResolver currentPrincipalResolver() {
+        return new CurrentPrincipalResolver();
     }
 }

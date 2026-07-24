@@ -1,8 +1,6 @@
 spring:
   application:
     name: e-bogcha-test
-  flyway:
-    enabled: false
   sql:
     init:
       mode: never

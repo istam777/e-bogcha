@@ -1,6 +1,9 @@
 package uz.oxukids.ebogcha.auth.infrastructure.configuration;
 
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import java.time.Instant;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -12,15 +15,13 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import org.springframework.beans.factory.annotation.Value;
+
 import uz.oxukids.ebogcha.auth.application.port.out.AuthUserRepository;
 import uz.oxukids.ebogcha.auth.application.port.out.PrincipalRepository;
 import uz.oxukids.ebogcha.auth.infrastructure.web.DevActorFilter;
 
-import java.time.Instant;
-
 @Configuration(proxyBeanMethods = false)
-@ConditionalOnProperty(name = "auth.jwt.secret-base64")
+@ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 public class SecurityBeansConfiguration {
 
     @Bean
@@ -64,25 +65,20 @@ public class SecurityBeansConfiguration {
                             ));
                         })
                         .accessDeniedHandler((request, response, accessDeniedException) -> {
-                            response.setStatus(HttpStatus.UNAUTHORIZED.value());
+                            response.setStatus(HttpStatus.FORBIDDEN.value());
                             response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
                             response.getWriter().write(problemDetail(
-                                    HttpStatus.UNAUTHORIZED.value(),
-                                    "AUTH_UNAUTHENTICATED",
-                                    "Unauthenticated",
-                                    "Authentication is required.",
+                                    HttpStatus.FORBIDDEN.value(),
+                                    "AUTH_ACCESS_DENIED",
+                                    "Access denied",
+                                    "You do not have permission to access this resource.",
                                     request.getRequestURI()
                             ));
                         })
                 )
-                .addFilterBefore(devActorFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(devActorFilter, org.springframework.security.web.context.SecurityContextHolderFilter.class);
 
         return http.build();
-    }
-
-    @Bean
-    org.springframework.security.crypto.password.PasswordEncoder passwordEncoder() {
-        return org.springframework.security.crypto.factory.PasswordEncoderFactories.createDelegatingPasswordEncoder();
     }
 
     private JwtAuthenticationConverter jwtAuthenticationConverter() {

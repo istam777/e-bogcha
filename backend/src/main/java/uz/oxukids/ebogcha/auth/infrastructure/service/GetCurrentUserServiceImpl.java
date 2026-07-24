@@ -10,30 +10,24 @@ import uz.oxukids.ebogcha.auth.infrastructure.web.dto.RoleResponse;
 import java.util.UUID;
 
 @Service
-public class GetCurrentUserServiceImpl implements GetCurrentUserService {
+class GetCurrentUserServiceImpl implements GetCurrentUserService {
 
     private final PrincipalRepository principalRepository;
 
-    public GetCurrentUserServiceImpl(PrincipalRepository principalRepository) {
+    GetCurrentUserServiceImpl(PrincipalRepository principalRepository) {
         this.principalRepository = principalRepository;
     }
 
     @Override
     public CurrentUserResponse getCurrentUser(UUID userId) {
         AuthenticatedPrincipal principal = principalRepository.loadPrincipal(userId);
-
         var roles = principal.roles().stream()
                 .map(r -> new RoleResponse(r.code(), r.branchId()))
                 .toList();
-
         return new CurrentUserResponse(
-                principal.id(),
-                principal.organizationId(),
-                principal.username(),
-                principal.displayName(),
-                roles,
-                principal.permissions(),
-                principal.branchIds()
+                principal.id(), principal.organizationId(),
+                principal.username(), principal.displayName(),
+                roles, principal.permissions(), principal.branchIds()
         );
     }
 }
