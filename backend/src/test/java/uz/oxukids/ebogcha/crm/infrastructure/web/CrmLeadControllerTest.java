@@ -4,6 +4,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import uz.oxukids.ebogcha.crm.application.port.in.AcceptLeadUseCase;
@@ -34,7 +37,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebMvcTest(CrmLeadController.class)
+import uz.oxukids.ebogcha.auth.application.port.out.AuthUserRepository;
+import uz.oxukids.ebogcha.auth.application.port.out.PrincipalRepository;
+import uz.oxukids.ebogcha.auth.application.port.out.RefreshTokenRepository;
+import uz.oxukids.ebogcha.auth.application.port.out.AuditLogRepository;
+
+import org.springframework.security.web.SecurityFilterChain;
+import uz.oxukids.ebogcha.auth.infrastructure.web.DevActorFilter;
+import uz.oxukids.ebogcha.auth.infrastructure.web.SecurityConfiguration;
+
+@WebMvcTest(value = CrmLeadController.class, excludeAutoConfiguration = SecurityAutoConfiguration.class)
+@AutoConfigureMockMvc(addFilters = false)
 @Import({
         CrmApiExceptionHandler.class,
         CrmLeadApiMapper.class,
@@ -64,6 +77,21 @@ class CrmLeadControllerTest {
 
     @MockitoBean
     private SearchLeadsUseCase searchLeadsUseCase;
+
+    @MockitoBean
+    private AuthUserRepository authUserRepository;
+
+    @MockitoBean
+    private PrincipalRepository principalRepository;
+
+    @MockitoBean
+    private RefreshTokenRepository refreshTokenRepository;
+
+    @MockitoBean
+    private AuditLogRepository auditLogRepository;
+
+    @MockitoBean(name = "apiSecurityFilterChain")
+    SecurityFilterChain securityFilterChain;
 
     @Test
     void leadSearchRequiresActorHeader() throws Exception {

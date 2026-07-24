@@ -1,0 +1,35 @@
+spring:
+  application:
+    name: e-bogcha-test
+  flyway:
+    enabled: false
+  sql:
+    init:
+      mode: never
+
+server:
+  port: 0
+
+auth:
+  jwt:
+    secret-base64: dGVzdC1zZWNyZXQta2V5LWZvci10ZXN0aW5nLXVzZS1vbmx5LWF0LWxlYXN0LTMy
+    access-expiration-seconds: 900
+    refresh-expiration-seconds: 2592000
+    issuer: e-bogcha-test
+    audience: e-bogcha-web
+  lockout:
+    max-failed-attempts: 5
+    lock-duration-seconds: 900
+  cookie:
+    secure: false
+  dev-actor:
+    header-enabled: true
+
+app:
+  env: development
+
+logging:
+  level:
+    org.springframework.security: DEBUG
+    org.springframework.jdbc.core: INFO
+    org.flywaydb: INFO
