@@ -1,0 +1,211 @@
+/* Input */
+.input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.input-label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.input-field {
+  height: var(--input-height);
+  padding: 0 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: 0.9375rem;
+  color: var(--color-text);
+  background: var(--color-surface);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  width: 100%;
+}
+
+.input-field:hover {
+  border-color: var(--color-text-muted);
+}
+
+.input-field:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-light);
+  outline: none;
+}
+
+.input-field--error {
+  border-color: var(--color-danger);
+}
+
+.input-field--error:focus {
+  box-shadow: 0 0 0 3px var(--color-danger-light);
+}
+
+.input-select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%23667085' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 32px;
+}
+
+.input-error {
+  font-size: 0.75rem;
+  color: var(--color-danger);
+}
+
+/* Button */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-weight: 600;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn--sm {
+  height: 32px;
+  padding: 0 12px;
+  font-size: 0.8125rem;
+}
+
+.btn--md {
+  height: var(--input-height);
+  padding: 0 16px;
+  font-size: 0.9375rem;
+}
+
+.btn--lg {
+  height: 48px;
+  padding: 0 20px;
+  font-size: 1rem;
+}
+
+.btn--primary {
+  background: var(--color-gold);
+  color: #FFFFFF;
+}
+
+.btn--primary:hover:not(:disabled) {
+  background: var(--color-gold-hover);
+}
+
+.btn--secondary {
+  background: var(--color-surface);
+  color: var(--color-text);
+  border-color: var(--color-border);
+}
+
+.btn--secondary:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+}
+
+.btn--ghost {
+  background: transparent;
+  color: var(--color-text-muted);
+}
+
+.btn--ghost:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+.btn--danger {
+  background: var(--color-danger);
+  color: #FFFFFF;
+}
+
+.btn--danger:hover:not(:disabled) {
+  background: #c43d3d;
+}
+
+/* Badge */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.badge__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.badge--info {
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+}
+.badge--info .badge__dot { background: var(--color-primary); }
+
+.badge--primary {
+  background: #EDE9FE;
+  color: #7C3AED;
+}
+.badge--primary .badge__dot { background: #7C3AED; }
+
+.badge--warning {
+  background: var(--color-warning-light);
+  color: #B45309;
+}
+.badge--warning .badge__dot { background: var(--color-warning); }
+
+.badge--success {
+  background: var(--color-success-light);
+  color: #15803D;
+}
+.badge--success .badge__dot { background: var(--color-success); }
+
+.badge--danger {
+  background: var(--color-danger-light);
+  color: #DC2626;
+}
+.badge--danger .badge__dot { background: var(--color-danger); }
+
+.badge--muted {
+  background: var(--color-surface-muted);
+  color: var(--color-text-muted);
+}
+.badge--muted .badge__dot { background: var(--color-text-light); }
+
+/* Skeleton */
+.skeleton {
+  background: linear-gradient(90deg, var(--color-border-light) 25%, var(--color-surface-muted) 50%, var(--color-border-light) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s infinite;
+  border-radius: var(--radius-sm);
+}
+
+@keyframes skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.skeleton-row td {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.skeleton-card {
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
