@@ -2,6 +2,12 @@ import type { LeadSearchParams } from '@/shared/types/api';
 import { isValidUuid } from '@/shared/lib/actor';
 import { isValidDateString } from './dates';
 
+const VALID_STATUSES = new Set<string>([
+  'NEW', 'CONTACTED', 'TOUR_PLANNED', 'SUCCESSFUL', 'NO_SHOW', 'LOST', 'ARCHIVED',
+]);
+const VALID_SOURCES = new Set<string>(['SOCIAL_MEDIA', 'PHONE', 'WALK_IN']);
+const VALID_OWNER_STATES = new Set<string>(['ALL', 'ASSIGNED', 'UNASSIGNED']);
+
 export interface FilterValidationResult {
   valid: boolean;
   errors: string[];
@@ -20,6 +26,18 @@ export function validateFilters(params: LeadSearchParams): FilterValidationResul
 
   if (params.ownerOperatorId && params.ownerState === 'UNASSIGNED') {
     errors.push('ownerOperatorId va UNASSIGNED birga ishlatilmaydi');
+  }
+
+  if (params.status && !VALID_STATUSES.has(params.status)) {
+    errors.push('status: noto\'g\'ri enum qiymati');
+  }
+
+  if (params.source && !VALID_SOURCES.has(params.source)) {
+    errors.push('source: noto\'g\'ri enum qiymati');
+  }
+
+  if (params.ownerState && !VALID_OWNER_STATES.has(params.ownerState)) {
+    errors.push('ownerState: noto\'g\'ri enum qiymati');
   }
 
   if (params.createdFrom && !isValidDateString(params.createdFrom)) {

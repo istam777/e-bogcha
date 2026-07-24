@@ -444,3 +444,422 @@ describe('Copyright year', () => {
     expect(visualFooter?.textContent).not.toContain('2025');
   });
 });
+
+describe('Search input debounce and API requests', () => {
+  it('no API request occurs for trimmed length 1', async () => {
+    localStorage.setItem('ebogcha_actor_user_id', '44444444-4444-4444-8444-444444444444');
+    let requestCount = 0;
+    server.use(
+      http.get('/api/v1/crm/leads', () => {
+        requestCount++;
+        return HttpResponse.json({
+          items: [],
+          page: 0,
+          size: 20,
+          totalElements: 0,
+          totalPages: 0,
+          hasPrevious: false,
+          hasNext: false,
+        });
+      }),
+    );
+
+    window.history.pushState({}, '', '/crm/leads');
+    const user = userEvent.setup();
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('CRM Leadlar').length).toBeGreaterThan(0);
+    });
+
+    requestCount = 0;
+
+    const searchInput = screen.getByPlaceholderText(/Ota-ona ismi yoki telefon/);
+    await user.type(searchInput, 'A');
+
+    await new Promise((r) => setTimeout(r, 500));
+    expect(requestCount).toBe(0);
+  });
+
+  it('one debounced API request occurs for committed query', async () => {
+    localStorage.setItem('ebogcha_actor_user_id', '44444444-4444-4444-8444-444444444444');
+    let requestCount = 0;
+    server.use(
+      http.get('/api/v1/crm/leads', () => {
+        requestCount++;
+        return HttpResponse.json({
+          items: [],
+          page: 0,
+          size: 20,
+          totalElements: 0,
+          totalPages: 0,
+          hasPrevious: false,
+          hasNext: false,
+        });
+      }),
+    );
+
+    window.history.pushState({}, '', '/crm/leads');
+    const user = userEvent.setup();
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('CRM Leadlar').length).toBeGreaterThan(0);
+    });
+
+    const searchInput = screen.getByPlaceholderText(/Ota-ona ismi yoki telefon/);
+    await user.type(searchInput, 'Ali');
+
+    await waitFor(() => {
+      expect(requestCount).toBe(1);
+    }, { timeout: 1000 });
+  });
+
+  it('API receives q=Ali after debounce', async () => {
+    localStorage.setItem('ebogcha_actor_user_id', '44444444-4444-4444-8444-444444444444');
+    let capturedUrl = '';
+    server.use(
+      http.get('/api/v1/crm/leads', ({ request }) => {
+        capturedUrl = request.url;
+        return HttpResponse.json({
+          items: [],
+          page: 0,
+          size: 20,
+          totalElements: 0,
+          totalPages: 0,
+          hasPrevious: false,
+          hasNext: false,
+        });
+      }),
+    );
+
+    window.history.pushState({}, '', '/crm/leads');
+    const user = userEvent.setup();
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('CRM Leadlar').length).toBeGreaterThan(0);
+    });
+
+    const searchInput = screen.getByPlaceholderText(/Ota-ona ismi yoki telefon/);
+    await user.type(searchInput, 'Ali');
+
+    await waitFor(() => {
+      expect(capturedUrl).toContain('q=Ali');
+    }, { timeout: 1000 });
+  });
+
+  it('input " a " is treated as a trimmed one-character query', async () => {
+    localStorage.setItem('ebogcha_actor_user_id', '44444444-4444-4444-8444-444444444444');
+    let requestCount = 0;
+    server.use(
+      http.get('/api/v1/crm/leads', () => {
+        requestCount++;
+        return HttpResponse.json({
+          items: [],
+          page: 0,
+          size: 20,
+          totalElements: 0,
+          totalPages: 0,
+          hasPrevious: false,
+          hasNext: false,
+        });
+      }),
+    );
+
+    window.history.pushState({}, '', '/crm/leads');
+    const user = userEvent.setup();
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('CRM Leadlar').length).toBeGreaterThan(0);
+    });
+
+    requestCount = 0;
+
+    const searchInput = screen.getByPlaceholderText(/Ota-ona ismi yoki telefon/);
+    await user.type(searchInput, ' a ');
+
+    expect(searchInput).toHaveValue(' a ');
+    expect(screen.getByText(/kamida 2 ta belgi/)).toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 500));
+    expect(requestCount).toBe(0);
+  });
+
+  it('pasted two-character text works', async () => {
+    localStorage.setItem('ebogcha_actor_user_id', '44444444-4444-4444-8444-444444444444');
+    let requestCount = 0;
+    server.use(
+      http.get('/api/v1/crm/leads', () => {
+        requestCount++;
+        return HttpResponse.json({
+          items: [],
+          page: 0,
+          size: 20,
+          totalElements: 0,
+          totalPages: 0,
+          hasPrevious: false,
+          hasNext: false,
+        });
+      }),
+    );
+
+    window.history.pushState({}, '', '/crm/leads');
+    const user = userEvent.setup();
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('CRM Leadlar').length).toBeGreaterThan(0);
+    });
+
+    const searchInput = screen.getByPlaceholderText(/Ota-ona ismi yoki telefon/);
+    await user.click(searchInput);
+    await user.paste('Ali');
+
+    expect(searchInput).toHaveValue('Ali');
+    await waitFor(() => {
+      expect(requestCount).toBe(1);
+    }, { timeout: 1000 });
+  });
+
+  it('clear cancels pending debounce', async () => {
+    localStorage.setItem('ebogcha_actor_user_id', '44444444-4444-4444-8444-444444444444');
+    let requestCount = 0;
+    server.use(
+      http.get('/api/v1/crm/leads', () => {
+        requestCount++;
+        return HttpResponse.json({
+          items: [],
+          page: 0,
+          size: 20,
+          totalElements: 0,
+          totalPages: 0,
+          hasPrevious: false,
+          hasNext: false,
+        });
+      }),
+    );
+
+    window.history.pushState({}, '', '/crm/leads');
+    const user = userEvent.setup();
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('CRM Leadlar').length).toBeGreaterThan(0);
+    });
+
+    requestCount = 0;
+
+    const searchInput = screen.getByPlaceholderText(/Ota-ona ismi yoki telefon/);
+    await user.type(searchInput, 'Ali');
+    await user.click(screen.getByLabelText('Qidiruvni tozalash'));
+
+    await new Promise((r) => setTimeout(r, 500));
+    expect(requestCount).toBe(0);
+  });
+});
+
+describe('Date filter URL representation', () => {
+  it('URL stores YYYY-MM-DD for createdFrom', async () => {
+    localStorage.setItem('ebogcha_actor_user_id', '44444444-4444-4444-8444-444444444444');
+    window.history.pushState({}, '', '/crm/leads');
+    const user = userEvent.setup();
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('CRM Leadlar').length).toBeGreaterThan(0);
+    });
+
+    const dateInput = screen.getByLabelText('Yaratilgan (dan)');
+    await user.type(dateInput, '2026-07-23');
+
+    await waitFor(() => {
+      expect(window.location.search).toContain('createdFrom=2026-07-23');
+    });
+  });
+
+  it('no RangeError occurs for invalid date', async () => {
+    localStorage.setItem('ebogcha_actor_user_id', '44444444-4444-4444-8444-444444444444');
+    window.history.pushState({}, '', '/crm/leads?createdFrom=2026-02-30');
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('CRM Leadlar').length).toBeGreaterThan(0);
+    });
+
+    const text = document.body.textContent || '';
+    expect(text).toContain('noto\'g\'ri sana formati');
+  });
+
+  it('invalid URL date does not crash the app', async () => {
+    localStorage.setItem('ebogcha_actor_user_id', '44444444-4444-4444-8444-444444444444');
+    window.history.pushState({}, '', '/crm/leads?createdFrom=not-a-date');
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('CRM Leadlar').length).toBeGreaterThan(0);
+    });
+
+    const text = document.body.textContent || '';
+    expect(text).toContain('noto\'g\'ri sana formati');
+  });
+});
+
+describe('Filter validation blocks requests for invalid ownerOperatorId', () => {
+  it('no request for malformed ownerOperatorId', async () => {
+    localStorage.setItem('ebogcha_actor_user_id', '44444444-4444-4444-8444-444444444444');
+    let requestCount = 0;
+    server.use(
+      http.get('/api/v1/crm/leads', () => {
+        requestCount++;
+        return HttpResponse.json({
+          items: [],
+          page: 0,
+          size: 20,
+          totalElements: 0,
+          totalPages: 0,
+          hasPrevious: false,
+          hasNext: false,
+        });
+      }),
+    );
+
+    window.history.pushState({}, '', '/crm/leads?ownerOperatorId=not-a-uuid');
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('CRM Leadlar').length).toBeGreaterThan(0);
+    });
+
+    await new Promise((r) => setTimeout(r, 500));
+    expect(requestCount).toBe(0);
+  });
+
+  it('no request for invalid date range (from after to)', async () => {
+    localStorage.setItem('ebogcha_actor_user_id', '44444444-4444-4444-8444-444444444444');
+    let requestCount = 0;
+    server.use(
+      http.get('/api/v1/crm/leads', () => {
+        requestCount++;
+        return HttpResponse.json({
+          items: [],
+          page: 0,
+          size: 20,
+          totalElements: 0,
+          totalPages: 0,
+          hasPrevious: false,
+          hasNext: false,
+        });
+      }),
+    );
+
+    window.history.pushState({}, '', '/crm/leads?createdFrom=2026-07-25&createdTo=2026-07-23');
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('CRM Leadlar').length).toBeGreaterThan(0);
+    });
+
+    await new Promise((r) => setTimeout(r, 500));
+    expect(requestCount).toBe(0);
+  });
+});
+
+describe('Invalid enum in URL is silently ignored', () => {
+  it('invalid status enum does not block the API request', async () => {
+    localStorage.setItem('ebogcha_actor_user_id', '44444444-4444-4444-8444-444444444444');
+    let capturedUrl = '';
+    let requestCount = 0;
+    server.use(
+      http.get('/api/v1/crm/leads', ({ request }) => {
+        requestCount++;
+        capturedUrl = request.url;
+        return HttpResponse.json({
+          items: [],
+          page: 0,
+          size: 20,
+          totalElements: 0,
+          totalPages: 0,
+          hasPrevious: false,
+          hasNext: false,
+        });
+      }),
+    );
+
+    window.history.pushState({}, '', '/crm/leads?status=INVALID_STATUS');
+    render(<App />);
+
+    await waitFor(() => {
+      expect(requestCount).toBeGreaterThanOrEqual(1);
+    });
+
+    expect(capturedUrl).not.toContain('status=INVALID_STATUS');
+  });
+});
+
+describe('Date filter API conversion', () => {
+  it('API receives ISO instant for createdFrom', async () => {
+    localStorage.setItem('ebogcha_actor_user_id', '44444444-4444-4444-8444-444444444444');
+    let capturedUrl = '';
+    server.use(
+      http.get('/api/v1/crm/leads', ({ request }) => {
+        capturedUrl = request.url;
+        return HttpResponse.json({
+          items: [],
+          page: 0,
+          size: 20,
+          totalElements: 0,
+          totalPages: 0,
+          hasPrevious: false,
+          hasNext: false,
+        });
+      }),
+    );
+
+    window.history.pushState({}, '', '/crm/leads?createdFrom=2026-07-23');
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('CRM Leadlar').length).toBeGreaterThan(0);
+    });
+
+    await waitFor(() => {
+      expect(capturedUrl).toContain('createdFrom=');
+      expect(capturedUrl).not.toContain('createdFrom=2026-07-23');
+    });
+  });
+
+  it('API receives ISO instant for createdTo (next day start)', async () => {
+    localStorage.setItem('ebogcha_actor_user_id', '44444444-4444-4444-8444-444444444444');
+    let capturedUrl = '';
+    server.use(
+      http.get('/api/v1/crm/leads', ({ request }) => {
+        capturedUrl = request.url;
+        return HttpResponse.json({
+          items: [],
+          page: 0,
+          size: 20,
+          totalElements: 0,
+          totalPages: 0,
+          hasPrevious: false,
+          hasNext: false,
+        });
+      }),
+    );
+
+    window.history.pushState({}, '', '/crm/leads?createdTo=2026-07-23');
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('CRM Leadlar').length).toBeGreaterThan(0);
+    });
+
+    await waitFor(() => {
+      const createdToMatch = capturedUrl.match(/createdTo=([^&]+)/);
+      expect(createdToMatch).toBeTruthy();
+      if (createdToMatch) {
+        expect(decodeURIComponent(createdToMatch[1])).toContain('T');
+      }
+    });
+  });
+});

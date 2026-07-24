@@ -30,8 +30,6 @@ export function SearchInput({ value, onChange, debounceMs = 350 }: SearchInputPr
       if (timerRef.current) clearTimeout(timerRef.current);
       const trimmed = next.trim();
       if (trimmed.length === 1) {
-        lastCommittedRef.current = '';
-        onChange('');
         return;
       }
       if (trimmed.length >= 2 && trimmed.length <= 100) {

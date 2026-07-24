@@ -1,9 +1,14 @@
 import type { LeadSearchParams } from '@/shared/types/api';
-import type { LeadStatus, LeadSource, OwnerState } from '@/shared/types/api';
 import {
   localDateToStartOfDayInstant,
   localDateToEndOfDayExclusiveInstant,
 } from './dates';
+
+const VALID_STATUSES = new Set<string>([
+  'NEW', 'CONTACTED', 'TOUR_PLANNED', 'SUCCESSFUL', 'NO_SHOW', 'LOST', 'ARCHIVED',
+]);
+const VALID_SOURCES = new Set<string>(['SOCIAL_MEDIA', 'PHONE', 'WALK_IN']);
+const VALID_OWNER_STATES = new Set<string>(['ALL', 'ASSIGNED', 'UNASSIGNED']);
 
 export function paramsToSearchParams(params: LeadSearchParams): URLSearchParams {
   const sp = new URLSearchParams();
@@ -33,16 +38,17 @@ export function searchParamsToParams(sp: URLSearchParams): LeadSearchParams {
   if (branchId) params.branchId = branchId;
 
   const status = sp.get('status');
-  if (status) params.status = status as LeadStatus;
+  if (status && VALID_STATUSES.has(status)) params.status = status as LeadSearchParams['status'];
 
   const source = sp.get('source');
-  if (source) params.source = source as LeadSource;
+  if (source && VALID_SOURCES.has(source)) params.source = source as LeadSearchParams['source'];
 
   const ownerOperatorId = sp.get('ownerOperatorId');
   if (ownerOperatorId) params.ownerOperatorId = ownerOperatorId;
 
   const ownerState = sp.get('ownerState');
-  if (ownerState) params.ownerState = ownerState as OwnerState;
+  if (ownerState && VALID_OWNER_STATES.has(ownerState))
+    params.ownerState = ownerState as LeadSearchParams['ownerState'];
 
   const overdueOnly = sp.get('overdueOnly');
   if (overdueOnly === 'true') params.overdueOnly = true;
@@ -69,6 +75,7 @@ export function localDateToApiInstant(
   localDate: string,
   boundary: 'start' | 'end',
 ): string | undefined {
+  if (localDate.includes('T')) return undefined;
   if (boundary === 'start') return localDateToStartOfDayInstant(localDate);
   return localDateToEndOfDayExclusiveInstant(localDate);
 }

@@ -59,4 +59,40 @@ describe('searchParamsToParams', () => {
     const params = searchParamsToParams(sp);
     expect(params.overdueOnly).toBe(true);
   });
+
+  it('ignores invalid status enum', () => {
+    const sp = new URLSearchParams('status=INVALID_STATUS');
+    const params = searchParamsToParams(sp);
+    expect(params.status).toBeUndefined();
+  });
+
+  it('ignores invalid source enum', () => {
+    const sp = new URLSearchParams('source=INVALID_SOURCE');
+    const params = searchParamsToParams(sp);
+    expect(params.source).toBeUndefined();
+  });
+
+  it('ignores invalid ownerState enum', () => {
+    const sp = new URLSearchParams('ownerState=INVALID_STATE');
+    const params = searchParamsToParams(sp);
+    expect(params.ownerState).toBeUndefined();
+  });
+
+  it('accepts valid status enum', () => {
+    const sp = new URLSearchParams('status=NEW');
+    const params = searchParamsToParams(sp);
+    expect(params.status).toBe('NEW');
+  });
+
+  it('accepts valid source enum', () => {
+    const sp = new URLSearchParams('source=PHONE');
+    const params = searchParamsToParams(sp);
+    expect(params.source).toBe('PHONE');
+  });
+
+  it('accepts valid ownerState enum', () => {
+    const sp = new URLSearchParams('ownerState=ASSIGNED');
+    const params = searchParamsToParams(sp);
+    expect(params.ownerState).toBe('ASSIGNED');
+  });
 });

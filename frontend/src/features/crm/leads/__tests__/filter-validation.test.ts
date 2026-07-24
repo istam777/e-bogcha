@@ -80,6 +80,36 @@ describe('validateFilters', () => {
   it('accepts valid size', () => {
     expect(validateFilters({ size: 20 }).valid).toBe(true);
   });
+
+  it('rejects invalid status enum', () => {
+    const result = validateFilters({ status: 'INVALID_STATUS' as never });
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes('status'))).toBe(true);
+  });
+
+  it('accepts valid status enum', () => {
+    expect(validateFilters({ status: 'NEW' }).valid).toBe(true);
+  });
+
+  it('rejects invalid source enum', () => {
+    const result = validateFilters({ source: 'INVALID_SOURCE' as never });
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes('source'))).toBe(true);
+  });
+
+  it('accepts valid source enum', () => {
+    expect(validateFilters({ source: 'PHONE' }).valid).toBe(true);
+  });
+
+  it('rejects invalid ownerState enum', () => {
+    const result = validateFilters({ ownerState: 'INVALID_STATE' as never });
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes('ownerState'))).toBe(true);
+  });
+
+  it('accepts valid ownerState enum', () => {
+    expect(validateFilters({ ownerState: 'ALL' }).valid).toBe(true);
+  });
 });
 
 describe('isQueryEnabled', () => {

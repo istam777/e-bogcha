@@ -170,6 +170,7 @@ A centralized pure validation function (`filter-validation.ts`) checks:
 - `branchId` UUID format
 - `ownerOperatorId` UUID format
 - `ownerOperatorId` + `UNASSIGNED` conflict (auto-clears operator on state change)
+- `status`, `source`, `ownerState` enum values
 - `createdFrom` and `createdTo` date format
 - `createdFrom` must not be after `createdTo`
 - `page` and `size` within supported bounds
@@ -187,7 +188,7 @@ Invalid filters prevent API requests and display inline error messages.
 ## Testing
 
 ```bash
-npm run test -- --run          # Run all tests
+npm run test -- --run          # Run all tests (140 tests)
 npm run test -- --run src/path # Run specific test file
 ```
 
@@ -198,7 +199,9 @@ Tests cover:
 - Search input with realistic user interactions (userEvent.type)
 - Debounce behavior and API request counting
 - UUID validation
+- Enum validation (status, source, ownerState) in URL state
 - Date conversion and format validation
+- Double-conversion protection for ISO date values
 - Status/source label mapping
 - Pagination metadata
 - API error parsing
@@ -206,7 +209,7 @@ Tests cover:
 - Component rendering with MSW
 - Login form validation
 - Development actor access
-- Filter validation blocking invalid requests
+- Filter validation blocking invalid requests (malformed UUIDs, conflicting owner filters, invalid dates, invalid enums)
 
 ## Official Branding
 
